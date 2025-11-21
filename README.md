@@ -341,6 +341,9 @@ python 1. yolo_model_crop_bbox.py \
 - **Clustering insights**: Identify sub-groups, outliers, and data quality issues
 - **Actionable**: Adjust augmentation strategy, split classes, or fix annotations based on results
 
+## Dependencies
+- require pytorch >= 2.1
+- refer to file: <a href=""https://github.com/bnkf1156f/EDA_intra_class_variation/blob/main/requirements.txt>requirements.txt<>
 
 # REFERENCES
 * DINOv2 Clustering: https://medium.com/@EnginDenizTangut/%EF%B8%8F-image-clustering-with-dinov2-and-hdbscan-a-hands-on-guide-35c6e29036f2
