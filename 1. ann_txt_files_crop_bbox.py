@@ -70,7 +70,10 @@ def main():
                 found = True
                 break
         if not found:
-            missing_imgs.append(txt)
+            if txt == "classes.txt":
+                print("✅  IGNORE CLASSES.TXT!")
+            else:
+                missing_imgs.append(txt)
 
     if missing_imgs:
         raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES: {missing_imgs}")

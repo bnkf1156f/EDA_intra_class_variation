@@ -80,7 +80,7 @@ def cluster_single_class(embeddings, class_name, eps, min_samples):
     
     return cluster_labels, n_clusters, n_outliers
 
-def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, max_samples=5):
+def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, max_samples):
     """Save sample images from each cluster and outliers."""
     cluster_dir = output_dir / f"{class_name}_samples"
     cluster_dir.mkdir(exist_ok=True)
@@ -103,10 +103,14 @@ def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, ma
         
         cluster_folder = cluster_dir / folder_name
         cluster_folder.mkdir(exist_ok=True)
-        
-        # Sample random images from this cluster
-        n_samples = min(max_samples, len(cluster_indices))
-        sampled_indices = np.random.choice(cluster_indices, n_samples, replace=False)
+
+        # Save all outlier images else Sample random images from this cluster
+        if folder_name == "outliers":
+            n_samples = len(cluster_indices)
+            sampled_indices = cluster_indices
+        else:
+            n_samples = min(max_samples, len(cluster_indices))
+            sampled_indices = np.random.choice(cluster_indices, n_samples, replace=False)
         
         # Copy images
         for idx in sampled_indices:
@@ -116,7 +120,7 @@ def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, ma
         
         print(f"    - {folder_name}: saved {n_samples}/{len(cluster_indices)} samples")
 
-def create_cluster_montage(image_files, cluster_labels, class_name, output_path, max_per_cluster=5):
+def create_cluster_montage(image_files, cluster_labels, class_name, output_path, max_per_cluster):
     """Create a montage showing sample images from each cluster."""
     unique_clusters = sorted(set(cluster_labels))
     n_clusters = len(unique_clusters)

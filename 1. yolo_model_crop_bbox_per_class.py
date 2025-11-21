@@ -33,7 +33,7 @@ import numpy as np
 from collections import defaultdict
 from tqdm import tqdm
 
-def collect_annotations(model, video_path, target_classes, conf_thresh=0.4, frame_stride=3):
+def collect_annotations(model, video_path, target_classes, conf_thresh, frame_stride):
     """
     Process video and collect all annotations for target classes.
     Args:
@@ -66,7 +66,7 @@ def collect_annotations(model, video_path, target_classes, conf_thresh=0.4, fram
     cap.release()
     return annotations
 
-def sample_frames_per_class(annotations, target_classes, num_frames=100):
+def sample_frames_per_class(annotations, target_classes, num_frames):
     """
     Smart sample frames to get even distribution for each class.
     Returns: dict {class_name: set(frame_numbers)}

@@ -331,7 +331,7 @@ python 1. yolo_model_crop_bbox.py \
 | 1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | **Pre-training** data inspection |
 | 1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | **Post-training** detection verification |
 | 2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations |
-| 3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis |
+| 3. clustering_of_classes_embeddings.py | Embeddings + images list | Clusters + insights | Intra-class variation analysis |
 
 ---
 

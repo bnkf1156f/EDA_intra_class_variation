@@ -39,7 +39,7 @@ def clear_memory():
     print(f"   RAM Usage: {mem.percent}% ({mem.used/1e9:.1f}GB / {mem.total/1e9:.1f}GB)")
     print("   ✅ Memory cleared\n")
 
-def cooling_break(seconds=30):
+def cooling_break(seconds):
     """Pause execution to let GPU cool down."""
     print(f"\n❄️  Cooling break: {seconds} seconds...")
     print("   This prevents thermal throttling on your laptop GPU")
@@ -93,7 +93,7 @@ def run_step(script, args, cool_down_after=True):
     # Post-execution cleanup
     if cool_down_after:
         clear_memory()
-        cooling_break(30)  # 30 second break between steps
+        cooling_break(10)  # 10 second break between steps
 
 def main():
     ## ---------------------------------##

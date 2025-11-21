@@ -49,7 +49,7 @@ def load_image_safe(path: Path):
         print(f"Warning: could not open image {path}: {e}", file=sys.stderr)
         return None
 
-def compute_embeddings_for_paths(paths, processor, model, device, batch_size=32):
+def compute_embeddings_for_paths(paths, processor, model, device, batch_size):
     embeddings = []
     valid_image_paths = []  # Track which images successfully loaded
     model.eval()
