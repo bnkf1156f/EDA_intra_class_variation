@@ -34,7 +34,7 @@ Two master scripts are provided to run the complete pipeline automatically with 
 #### Quick Start
 ```bash
 # Edit global variables in script, then run:
-python "4. master_script_pretrain.py"
+python "4. master_script_dinov2_pretrain.py"
 ```
 
 #### Configuration Variables
@@ -61,24 +61,16 @@ max_cluster_samples = "15"
 2. **Embedding Generation** (`2. save_dinov2_embeddings_per_class.py`)
    - Generates 768D DINOv2 embeddings
    - GPU-accelerated with mixed precision
-   - ~5-10 minutes for 1000 images on RTX 4060
 
 3. **Clustering Analysis** (`3. clustering_of_classes_embeddings.py`)
-   - Auto-tunes DBSCAN epsilon per class
+   - Auto-tunes DBSCAN epsilon per class if selected
    - Generates visualizations and montages
-   - Cross-class separability analysis
-
-#### Typical Runtime
-- **Small Dataset** (500-1000 images): 5-10 minutes
-- **Medium Dataset** (2000-5000 images): 15-30 minutes
-- **Large Dataset** (10000+ images): 45+ minutes
-
-*Times based on RTX 4060 Laptop GPU*
+   - Cross-class separability analysis if selected 
 
 ---
 
 ### Script: 4. master_script_dinov2_posttrain.py
-**Automated POST-TRAINING pipeline** - Analyzes trained model detections
+**Automated POST-TRAINING pipeline** - Analyzes trained model detections on a test video
 
 #### Features
 Same as pre-training script, plus:
@@ -119,13 +111,6 @@ max_cluster_samples = "5"
 2. **Embedding Generation** (same as pre-training)
 3. **Clustering Analysis** (same as pre-training)
 
-#### Typical Runtime
-**Example**: 22-minute video, 3 classes, 1000 samples/class, frame_stride=3
-- Step 1 (Detection): ~12-15 minutes
-- Step 2 (Embeddings): ~3-5 minutes
-- Step 3 (Clustering): ~1-2 minutes
-- **Total: ~18-20 minutes** on RTX 4060 Laptop GPU
-
 #### Frame Stride Recommendations
 | Video FPS | Stride | Effective FPS | Use Case |
 |-----------|--------|---------------|----------|
@@ -138,46 +123,8 @@ max_cluster_samples = "5"
 
 ### Master Script Output
 
-Both scripts provide detailed progress tracking:
+Both scripts provide detailed progress tracking: https://github.com/bnkf1156f/EDA_intra_class_variation/blob/main/terminal_ouput_demo.txt
 
-```
-==============================================================
-INTRA-CLASS VARIATION EDA PIPELINE
-==============================================================
-  GPU: NVIDIA GeForce RTX 4060 Laptop GPU
-  VRAM: 8.0GB
-==============================================================
-
-Pipeline Configuration:
-  Video: till_20_oct.mp4 (22 mins)
-  Classes: board, screw, screw_holder
-  Frames per class: 1000
-  Total estimated frames: 3000
-
-==============================================================
-STEP 1/3: EXTRACTING BOUNDING BOXES FROM VIDEO
-⚠️  This step is time-consuming
-==============================================================
-Running: 1. yolo_model_crop_bbox_per_class.py
-...
-✅ 1. yolo_model_crop_bbox_per_class.py completed successfully
-
-🧹 Clearing memory...
-   GPU Memory: 0.23GB allocated, 0.50GB reserved
-   RAM Usage: 45.2% (7.2GB / 16.0GB)
-   ✅ Memory cleared
-
-❄️  Cooling break: 10 seconds...
-   This prevents thermal throttling on your laptop GPU
-   ✅ Cooling break complete
-
-==============================================================
-STEP 2/3: GENERATING DINOV2 EMBEDDINGS
-==============================================================
-⚠️  This step is GPU-intensive
-   Processing ~3000 images
-...
-```
 
 ### Memory Management Features
 
@@ -210,7 +157,6 @@ STEP 2/3: GENERATING DINOV2 EMBEDDINGS
 #### Out of Memory (RAM)
 1. **Close applications**: Browsers, IDEs, etc.
 2. **Process smaller batches**: Run pipeline on subset of classes
-3. **Increase swap space**: Add virtual memory (Windows/Linux)
 
 #### Script Hangs or Crashes
 1. **Increase cooling breaks**: Edit `cooling_break(10)` to `cooling_break(30)`
@@ -265,7 +211,6 @@ cropped_imgs_by_class/
 ```
 
 #### Common Issues
-- **"Class ID(s) not in mapping"**: Add missing IDs to `--class_ids_to_names`
 - **"TXT files missing images"**: Fix dataset consistency
 - **Empty crops**: Check annotation normalization in .txt files
 
