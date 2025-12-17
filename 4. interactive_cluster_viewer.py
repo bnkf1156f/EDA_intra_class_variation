@@ -5,7 +5,7 @@ Generates interactive HTML visualizations from existing embeddings.
 Run AFTER Script 2 (embeddings generated). Independent of Script 3.
 
 Usage:
-    python '.\4. interactive_cluster_viewer.py' --root "cropped_imgs_by_class_bmw_7" --output_dir "clustering_interactive_res_bmw_7" --min_samples 3
+    python '.\4. interactive_cluster_viewer.py' --root "cropped_imgs_by_class_bmw_7" --output_dir "interactive_clusters_results_bmw_7" --min_samples 3
 
 Features:
     - Hover over points to see filename
@@ -78,7 +78,7 @@ def create_interactive_plot(embeddings, image_files, class_name, output_path, ep
 
     # Store filepath in customdata for click handler
     fig.update_traces(
-        customdata=df[['filepath', 'filename']].values,
+        customdata=df[['filepath', 'filename', 'cluster']].values,
         hovertemplate='<b>%{customdata[1]}</b><br>Cluster: %{marker.color}<extra></extra>'
     )
 
