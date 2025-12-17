@@ -54,6 +54,13 @@ def create_interactive_plot(embeddings, image_files, class_name, output_path, ep
     dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
     cluster_labels = dbscan.fit_predict(embeddings_norm)
 
+    # show actual cluster labels
+    unique_labels = sorted(set(cluster_labels))
+    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    n_outliers = sum(cluster_labels == -1)
+    print(f"  DBSCAN results: {n_clusters} clusters, {n_outliers} outliers")
+    print(f"  Unique labels: {unique_labels}")
+
     # Build dataframe
     df = pd.DataFrame({
         'UMAP1': X_2d[:, 0],
@@ -71,14 +78,13 @@ def create_interactive_plot(embeddings, image_files, class_name, output_path, ep
         x='UMAP1',
         y='UMAP2',
         color='cluster',
-        hover_data={'filename': True, 'filepath': False, 'UMAP1': ':.2f', 'UMAP2': ':.2f'},
+        custom_data=['filepath', 'filename', 'cluster'],  # px.scatter handles per-trace alignment
         title=f'Interactive Cluster View: {class_name} ({len(embeddings)} samples)',
         color_discrete_map=color_map
     )
 
-    # Store filepath in customdata for click handler
+    # Update hover template (customdata is now correctly aligned per trace by px.scatter)
     fig.update_traces(
-        customdata=df[['filepath', 'filename', 'cluster']].values,
         hovertemplate='<b>%{customdata[1]}</b><br>%{customdata[2]}<extra></extra>'
     )
 
