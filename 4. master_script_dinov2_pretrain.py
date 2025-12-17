@@ -98,43 +98,21 @@ def main():
     ## ---------------------------------##
     ##  GLOBAL VARIABLES PRE-TRAINING   ##
     ## ---------------------------------##
-    imgs_label_path = r"D:\VkRetro\BmwWork\test op 7.0\BMW v7 Labelled Frames"
+    imgs_label_path = r"D:\path\to\your\labelled_frames"
     class_names = [
-        "person",
-        "hands",
-        "black_region",
-        "other_car_base",
-        "electric_car_base",
-        "black_sheet",
-        "half_silver_sheet",
-        "full_silver_sheet",
-        "hands_w_torque_gun",
-        "grey_clamp_R",
-        "coolant_line",
-        "rubber_band",
-        "green_line",
-        "clipping_pose",
-        "I20_car_base",
-        "yellow_part_I20",
-        "connector_box_I20",
-        "cable_I20",
-        "hand_w_torque_driver_I20",
-        "round_wire_I20",
-        "vent_I20",
-        "triangle_frame_I20",
-        "torque_tool_placed_back",
-        "hand_w_torque_tool_back",
-        "installed_coolant_line",
+        "class_0",
+        "class_1",
+        "class_2",
     ]
 
-    cropped_bbox_dir = "cropped_imgs_by_class_bmw_7"
+    cropped_bbox_dir = "cropped_imgs_by_class"
 
     batch_size = "32"
     save_suffix = "embeddings_dinov2.npy"
 
     epsilon = "0.15" # Only imp when auto-tune is NOT selected during clustering
     min_pts = "3"
-    output_cluster_dir = "clustering_results_txt_files_dinov2_bmw_7"
+    output_cluster_dir = "clustering_results_txt_files_dinov2"
     max_cluster_samples = "20"
     
 
