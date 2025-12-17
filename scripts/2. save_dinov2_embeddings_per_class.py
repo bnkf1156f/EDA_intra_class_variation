@@ -97,14 +97,16 @@ def compute_embeddings_for_paths(paths, processor, model, device, batch_size):
             
             # Move to CPU and convert to numpy immediately to free GPU memory
             emb_batch = emb_batch.cpu()
-            torch.cuda.synchronize()  # Ensure GPU operations are complete
+            if device == "cuda":
+                torch.cuda.synchronize()  # Ensure GPU operations are complete
             emb_batch = emb_batch.numpy()
             embeddings.append(emb_batch)
             valid_image_paths.extend(batch_valid_paths)
-            
+
             # Clean up GPU memory
             del outputs, inputs
-            torch.cuda.empty_cache()
+            if device == "cuda":
+                torch.cuda.empty_cache()
             
             # Update progress bar description
             progress_bar.set_postfix({

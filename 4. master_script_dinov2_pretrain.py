@@ -4,6 +4,8 @@ Master script to run entire intra and inter class variation EDA pipeline.
 Includes memory management and cooling breaks for laptop GPUs.
 
 Usage: python "4. master_script.py"
+
+5789 annotated files, 25 classes --> 20 mins approxx
 """
 
 import subprocess
@@ -96,7 +98,7 @@ def main():
     ## ---------------------------------##
     ##  GLOBAL VARIABLES PRE-TRAINING   ##
     ## ---------------------------------##
-    imgs_label_path = r"C:/VkRetro/BmwVids/Labelled-BMW-Frames_test_op_7"
+    imgs_label_path = r"D:\VkRetro\BmwWork\test op 7.0\BMW v7 Labelled Frames"
     class_names = [
         "person",
         "hands",
@@ -121,7 +123,8 @@ def main():
         "vent_I20",
         "triangle_frame_I20",
         "torque_tool_placed_back",
-        "hand_w_torque_tool_back"
+        "hand_w_torque_tool_back",
+        "installed_coolant_line",
     ]
 
     cropped_bbox_dir = "cropped_imgs_by_class_bmw_7"
@@ -132,7 +135,7 @@ def main():
     epsilon = "0.15" # Only imp when auto-tune is NOT selected during clustering
     min_pts = "3"
     output_cluster_dir = "clustering_results_txt_files_dinov2_bmw_7"
-    max_cluster_samples = "15"
+    max_cluster_samples = "20"
     
 
     # GPU specs print
@@ -161,7 +164,7 @@ def main():
     print("STEP 1/3: EXTRACTING BOUNDING BOXES FROM LABELLED DATA")
     print("⚠️  This step is time-consuming")
     print("="*60)
-    run_step("1. ann_txt_files_crop_bbox.py", [
+    run_step("scripts/1. ann_txt_files_crop_bbox.py", [
         "--imgs_label_path", imgs_label_path,
         "--classes"] + class_ids + [  # Unpack list
         "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
@@ -175,7 +178,7 @@ def main():
     print("="*60)
     print("⚠️  This step is GPU-intensive")
     
-    run_step("2. save_dinov2_embeddings_per_class.py", [
+    run_step("scripts/2. save_dinov2_embeddings_per_class.py", [
         "--root", cropped_bbox_dir,
         "--batch", batch_size,
         "--save_suffix", save_suffix
@@ -186,7 +189,7 @@ def main():
     print("\n" + "="*60)
     print("STEP 3/3: CLUSTERING ANALYSIS")
     print("="*60)
-    run_step("3. clustering_of_classes_embeddings.py", [
+    run_step("scripts/3. clustering_of_classes_embeddings.py", [
         "--root", cropped_bbox_dir,
         "--eps", epsilon,
         "--min_samples", min_pts,

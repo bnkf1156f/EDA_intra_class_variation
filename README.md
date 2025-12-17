@@ -53,16 +53,16 @@ max_cluster_samples = "15"
 ```
 
 #### Pipeline Steps
-1. **Crop Extraction** (`1. ann_txt_files_crop_bbox.py`)
+1. **Crop Extraction** (`scripts/1. ann_txt_files_crop_bbox.py`)
    - Extracts bounding boxes from annotated images
    - Validates dataset integrity
    - Organizes crops by class
 
-2. **Embedding Generation** (`2. save_dinov2_embeddings_per_class.py`)
+2. **Embedding Generation** (`scripts/2. save_dinov2_embeddings_per_class.py`)
    - Generates 768D DINOv2 embeddings
    - GPU-accelerated with mixed precision
 
-3. **Clustering Analysis** (`3. clustering_of_classes_embeddings.py`)
+3. **Clustering Analysis** (`scripts/3. clustering_of_classes_embeddings.py`)
    - Auto-tunes DBSCAN epsilon per class if selected
    - Generates visualizations and montages
    - Cross-class separability analysis if selected 
@@ -102,7 +102,7 @@ max_cluster_samples = "5"
 ```
 
 #### Pipeline Steps
-1. **Detection & Cropping** (`1. yolo_model_crop_bbox_per_class.py`)
+1. **Detection & Cropping** (`scripts/1. yolo_model_crop_bbox_per_class.py`)
    - Runs YOLOv8 inference on video
    - Applies frame stride (e.g., every 3rd frame)
    - Smart sampling: uniformly extracts target number of crops per class
@@ -173,12 +173,12 @@ Both scripts provide detailed progress tracking: https://github.com/bnkf1156f/ED
 
 ## Individual Scripts Documentation
 
-### Script: 1. ann_txt_files_crop_bbox.py
+### Script: scripts/1. ann_txt_files_crop_bbox.py
 **Stage: PRE-TRAINING** - Analyze annotated data before model training
 
 #### Usage
 ```bash
-python "1. ann_txt_files_crop_bbox.py" \
+python "scripts/1. ann_txt_files_crop_bbox.py" \
     --imgs_label_path "path/to/LabelledData" \
     --classes 0 1 2 3 4 \
     --class_ids_to_names 0 board 1 screw 2 screw_holder 3 tape 4 case \
@@ -216,12 +216,12 @@ cropped_imgs_by_class/
 
 ---
 
-### Script: 1. yolo_model_crop_bbox_per_class.py
+### Script: scripts/1. yolo_model_crop_bbox_per_class.py
 **Stage: POST-TRAINING** - Verify trained model detections
 
 #### Usage
 ```bash
-python "1. yolo_model_crop_bbox_per_class.py" \
+python "scripts/1. yolo_model_crop_bbox_per_class.py" \
     --model "path/to/model.pt" \
     --video "path/to/video.mp4" \
     --classes class1 class2 class3 \
@@ -266,14 +266,14 @@ cropped_images/
 
 ---
 
-### Script: 2. save_dinov2_embeddings_per_class.py
+### Script: scripts/2. save_dinov2_embeddings_per_class.py
 **Generates semantic embeddings from cropped images**
 
 This script processes cropped object images and uses DINOv2 model to generate embeddings for each class. Optimized for GPU usage with memory management and mixed precision support.
 
 #### Usage
 ```bash
-python "2. save_dinov2_embeddings_per_class.py" --root ./cropped_images --batch 32
+python "scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_images --batch 32
 ```
 
 #### Parameters
@@ -334,19 +334,19 @@ python "2. save_dinov2_embeddings_per_class.py" --root ./cropped_images --batch 
 
 ---
 
-### Script: 3. clustering_of_classes_embeddings.py
+### Script: scripts/3. clustering_of_classes_embeddings.py
 **Discovers sub-groups and outliers using DBSCAN**
 
 #### Basic Usage
 ```bash
 # Auto-tuning (recommended)
-python "3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3
+python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3
 
 # Manual epsilon
-python "3. clustering_of_classes_embeddings.py" --root ./cropped_images --eps 0.15 --min_samples 3
+python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --eps 0.15 --min_samples 3
 
 # Full analysis with visualizations
-python "3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3 --save_montage --cross_class
+python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3 --save_montage --cross_class
 ```
 
 #### Parameters
@@ -451,6 +451,45 @@ screw_holder: 7 clusters, 12 outliers (6.0%)   → High diversity
 
 ---
 
+### Script: 4. interactive_cluster_viewer.py (Optional)
+**Interactive HTML visualization using Plotly**
+
+Standalone optional tool for exploring clusters interactively. Run after Script 2 (embeddings). Independent of Script 3.
+
+#### Usage
+```bash
+python "4. interactive_cluster_viewer.py" --root cropped_imgs_by_class
+```
+
+#### Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--root` | `cropped_images` | Root folder with embeddings |
+| `--output_dir` | `clustering_results` | Output directory for HTML files |
+| `--min_samples` | 3 | DBSCAN min_samples |
+| `--eps` | auto | DBSCAN eps (auto-tuned if not provided) |
+
+#### Features
+- **Hover** over points to see filename
+- **Zoom/pan** with mouse
+- **Lasso select** to isolate regions
+- Generates one HTML file per class
+
+#### Output
+```
+clustering_results/
+├── person_interactive.html
+├── hands_interactive.html
+└── ...
+```
+
+#### Requirements
+```bash
+pip install plotly
+```
+
+---
+
 ## Complete Workflows
 
 ### Pre-Training Analysis (Automated)
@@ -468,17 +507,17 @@ python "4. master_script_pretrain.py"
 ### Pre-Training Analysis (Manual)
 ```bash
 # 1. Extract crops from annotated data
-python "1. ann_txt_files_crop_bbox.py" \
+python "scripts/1. ann_txt_files_crop_bbox.py" \
     --imgs_label_path "./LabelledData" \
     --classes 0 1 2 \
     --class_ids_to_names 0 board 1 screw 2 screw_holder
 
 # 2. Generate embeddings
-python "2. save_dinov2_embeddings_per_class.py" \
+python "scripts/2. save_dinov2_embeddings_per_class.py" \
     --root ./cropped_imgs_by_class --batch 32
 
 # 3. Analyze clusters
-python "3. clustering_of_classes_embeddings.py" \
+python "scripts/3. clustering_of_classes_embeddings.py" \
     --root ./cropped_imgs_by_class \
     --auto_tune --min_samples 3 --save_montage
 ```
@@ -498,7 +537,7 @@ python "4. master_script_dinov2_posttrain.py"
 ### Post-Training Analysis (Manual)
 ```bash
 # 1. Extract crops using trained model
-python "1. yolo_model_crop_bbox_per_class.py" \
+python "scripts/1. yolo_model_crop_bbox_per_class.py" \
     --model "model.pt" \
     --video "video.mp4" \
     --classes board screw screw_holder \
@@ -513,12 +552,13 @@ python "1. yolo_model_crop_bbox_per_class.py" \
 
 | Script | Input | Output | Purpose |
 |--------|-------|--------|---------|
-| **4. master_script_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** |
+| **4. master_script_dinov2_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** |
 | **4. master_script_dinov2_posttrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** |
-| 1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection |
-| 1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification |
-| 2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations |
-| 3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis |
+| scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection |
+| scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification |
+| scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations |
+| scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis |
+| 4. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration |
 
 ---
 

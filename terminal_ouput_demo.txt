@@ -1,3 +1,4 @@
+(yolo_env) PS D:\VkRetro\YoloDetectExtractFrames\EDA_intra_class_variation_scripts> python '.\4. master_script_dinov2_pretrain.py' 
 ============================================================
 INTRA-CLASS VARIATION EDA PIPELINE
 ============================================================
@@ -18,90 +19,104 @@ Running: 1. ann_txt_files_crop_bbox.py
 ------------------------------------------------------------
 |                     CHECKING DATASET                     |
 ------------------------------------------------------------
+✅  IGNORE CLASSES.TXT!
 ✅  ALL PNG FILES HAVE THEIR CORRESPONDING TXT FILES
 
 
 ------------------------------------------------------------
 |                  PROCESSING ANNOTATIONS                  |
 ------------------------------------------------------------
-Processed 100/4416 files...
-Processed 200/4416 files...
-Processed 300/4416 files...
-Processed 400/4416 files...
-Processed 500/4416 files...
-Processed 600/4416 files...
-Processed 700/4416 files...
-Processed 800/4416 files...
-Processed 900/4416 files...
-Processed 1000/4416 files...
-Processed 1100/4416 files...
-Processed 1200/4416 files...
-Processed 1300/4416 files...
-Processed 1400/4416 files...
-Processed 1500/4416 files...
-Processed 1600/4416 files...
-Processed 1700/4416 files...
-Processed 1800/4416 files...
-Processed 1900/4416 files...
-Processed 2000/4416 files...
-Processed 2100/4416 files...
-Processed 2200/4416 files...
-Processed 2300/4416 files...
-Processed 2400/4416 files...
-Processed 2500/4416 files...
-Processed 2600/4416 files...
-Processed 2700/4416 files...
-Processed 2800/4416 files...
-Processed 2900/4416 files...
-Processed 3000/4416 files...
-Processed 3100/4416 files...
-Processed 3200/4416 files...
-Processed 3300/4416 files...
-Processed 3400/4416 files...
-Processed 3500/4416 files...
-⚠️  Empty crop from vlcsnap-2025-11-17-16h48m15s588.png for class 3
+Processed 100/5789 files...
+Processed 200/5789 files...
+Processed 300/5789 files...
+Processed 400/5789 files...
+Processed 500/5789 files...
+Processed 600/5789 files...
+Processed 700/5789 files...
+Processed 800/5789 files...
+Processed 900/5789 files...
+Processed 1000/5789 files...
+Processed 1100/5789 files...
+Processed 1200/5789 files...
+Processed 1300/5789 files...
+Processed 1400/5789 files...
+Processed 1500/5789 files...
+Processed 1600/5789 files...
+Processed 1700/5789 files...
+Processed 1800/5789 files...
+Processed 1900/5789 files...
+Processed 2000/5789 files...
+Processed 2100/5789 files...
+Processed 2200/5789 files...
+Processed 2300/5789 files...
+Processed 2400/5789 files...
+Processed 2500/5789 files...
+Processed 2600/5789 files...
+Processed 2700/5789 files...
+Processed 2800/5789 files...
+Processed 2900/5789 files...
+Processed 3000/5789 files...
+Processed 3100/5789 files...
+Processed 3200/5789 files...
+Processed 3300/5789 files...
+Processed 3400/5789 files...
+Processed 3500/5789 files...
+Processed 3600/5789 files...
+Processed 3700/5789 files...
 ⚠️  Empty crop from vlcsnap-2025-11-17-16h48m34s026.png for class 3
-Processed 3600/4416 files...
-Processed 3700/4416 files...
-Processed 3800/4416 files...
-Processed 3900/4416 files...
-Processed 4000/4416 files...
-Processed 4100/4416 files...
-Processed 4200/4416 files...
-Processed 4300/4416 files...
-Processed 4400/4416 files...
+Processed 3800/5789 files...
+Processed 3900/5789 files...
+Processed 4000/5789 files...
+Processed 4100/5789 files...
+Processed 4200/5789 files...
+Processed 4300/5789 files...
+Processed 4400/5789 files...
+Processed 4500/5789 files...
+Processed 4600/5789 files...
+Processed 4700/5789 files...
+Processed 4800/5789 files...
+Processed 4900/5789 files...
+Processed 5000/5789 files...
+Processed 5100/5789 files...
+Processed 5200/5789 files...
+Processed 5300/5789 files...
+Processed 5400/5789 files...
+Processed 5500/5789 files...
+Processed 5600/5789 files...
+Processed 5700/5789 files...
 
 ------------------------------------------------------------
 |                        SUMMARY                           |
 ------------------------------------------------------------
-Total files processed: 4416
+Total files processed: 5788
 Output directory: cropped_imgs_by_class_bmw_7
 
 Crops extracted per class:
-  Class 23 (hand_w_torque_tool_back): 145 crops
-  Class 15 (yellow_part_I20): 483 crops
-  Class 3 (other_car_base): 3004 crops
-  Class 7 (full_silver_sheet): 1649 crops
-  Class 1 (hands): 0 crops
-  Class 0 (person): 0 crops
-  Class 22 (torque_tool_placed_back): 187 crops
-  Class 18 (hand_w_torque_driver_I20): 67 crops
-  Class 10 (coolant_line): 171 crops
-  Class 12 (green_line): 836 crops
-  Class 16 (connector_box_I20): 49 crops
-  Class 2 (black_region): 6042 crops
-  Class 6 (half_silver_sheet): 344 crops
-  Class 4 (electric_car_base): 1195 crops
-  Class 5 (black_sheet): 235 crops
-  Class 17 (cable_I20): 65 crops
-  Class 19 (round_wire_I20): 36 crops
-  Class 21 (triangle_frame_I20): 515 crops
+  Class 10 (coolant_line): 390 crops
+  Class 2 (black_region): 8040 crops
   Class 9 (grey_clamp_R): 344 crops
-  Class 14 (I20_car_base): 992 crops
-  Class 13 (clipping_pose): 395 crops
-  Class 20 (vent_I20): 667 crops
-  Class 8 (hands_w_torque_gun): 687 crops
-  Class 11 (rubber_band): 603 crops
+  Class 12 (green_line): 818 crops
+  Class 20 (vent_I20): 865 crops
+  Class 19 (round_wire_I20): 37 crops
+  Class 7 (full_silver_sheet): 1746 crops
+  Class 5 (black_sheet): 234 crops
+  Class 17 (cable_I20): 75 crops
+  Class 24 (installed_coolant_line): 1423 crops
+  Class 0 (person): 0 crops
+  Class 13 (clipping_pose): 697 crops
+  Class 21 (triangle_frame_I20): 693 crops
+  Class 16 (connector_box_I20): 53 crops
+  Class 22 (torque_tool_placed_back): 186 crops
+  Class 18 (hand_w_torque_driver_I20): 71 crops
+  Class 14 (I20_car_base): 1339 crops
+  Class 4 (electric_car_base): 2382 crops
+  Class 6 (half_silver_sheet): 332 crops
+  Class 8 (hands_w_torque_gun): 1197 crops
+  Class 15 (yellow_part_I20): 491 crops
+  Class 3 (other_car_base): 3226 crops
+  Class 11 (rubber_band): 689 crops
+  Class 23 (hand_w_torque_tool_back): 146 crops
+  Class 1 (hands): 0 crops
 ------------------------------------------------------------
 
 
@@ -109,13 +124,13 @@ Crops extracted per class:
 
 🧹 Clearing memory...
    GPU Memory: 0.00GB allocated, 0.00GB reserved
-   RAM Usage: 60.2% (9.8GB / 16.3GB)
+   RAM Usage: 54.0% (8.8GB / 16.3GB)
    ✅ Memory cleared
 
 
-❄️  Cooling break: 30 seconds...
+❄️  Cooling break: 10 seconds...
    This prevents thermal throttling on your laptop GPU
-   ⏳ 30 seconds remaining.../r   ⏳ 25 seconds remaining.../r   ⏳ 20 seconds remaining.../r   ⏳ 15 seconds remaining.../r   ⏳ 10 seconds remaining.../r   ⏳ 5 seconds remaining.../r
+   ⏳ 10 seconds remaining.../r   ⏳ 5 seconds remaining.../r
    ✅ Cooling break complete
 
 
@@ -136,105 +151,105 @@ Using a slow image processor as `use_fast` is unset and a slow processor was sav
 
 --------------------------------------------------------------------------------
 Processing class folder: black_region
-Found 6042 images
-Computing embeddings: 100%|██████████████████████████████████████████████████| 189/189 [00:56<00:00,  3.34batch/s, batch_size=26, total_processed=6042, gpu_mem=0.4GB]
-  Embeddings shape: (6042, 768), dtype=float32
+Found 8040 images
+Computing embeddings: 100%|███████████████████████████████████████████████████████████████████████| 252/252 [01:19<00:00,  3.16batch/s, batch_size=8, total_processed=8040, gpu_mem=0.4GB]
+  Embeddings shape: (8040, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\black_region\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\black_region\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: black_sheet
-Found 235 images
-Computing embeddings: 100%|███████████████████████████████████████████████████████| 8/8 [00:02<00:00,  3.28batch/s, batch_size=11, total_processed=235, gpu_mem=0.4GB]
-  Embeddings shape: (235, 768), dtype=float32
+Found 234 images
+Computing embeddings: 100%|███████████████████████████████████████████████████████████████████████████| 8/8 [00:02<00:00,  3.41batch/s, batch_size=10, total_processed=234, gpu_mem=0.4GB]
+  Embeddings shape: (234, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\black_sheet\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\black_sheet\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: cable_I20
-Found 65 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████████| 3/3 [00:00<00:00,  3.86batch/s, batch_size=1, total_processed=65, gpu_mem=0.4GB]
-  Embeddings shape: (65, 768), dtype=float32
+Found 75 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████████| 3/3 [00:00<00:00,  3.69batch/s, batch_size=11, total_processed=75, gpu_mem=0.4GB]
+  Embeddings shape: (75, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\cable_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\cable_I20\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: clipping_pose
-Found 395 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 13/13 [00:03<00:00,  3.76batch/s, batch_size=11, total_processed=395, gpu_mem=0.4GB]
-  Embeddings shape: (395, 768), dtype=float32
+Found 697 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 22/22 [00:05<00:00,  3.76batch/s, batch_size=25, total_processed=697, gpu_mem=0.4GB]
+  Embeddings shape: (697, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\clipping_pose\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\clipping_pose\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: connector_box_I20
-Found 49 images
-Computing embeddings: 100%|████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  4.87batch/s, batch_size=17, total_processed=49, gpu_mem=0.4GB] 
-  Embeddings shape: (49, 768), dtype=float32
+Found 53 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  4.80batch/s, batch_size=21, total_processed=53, gpu_mem=0.4GB]
+  Embeddings shape: (53, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\connector_box_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\connector_box_I20\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: coolant_line
-Found 171 images
-Computing embeddings: 100%|███████████████████████████████████████████████████████| 6/6 [00:02<00:00,  2.89batch/s, batch_size=11, total_processed=171, gpu_mem=0.4GB]
-  Embeddings shape: (171, 768), dtype=float32
+Found 390 images
+Computing embeddings: 100%|██████████████████████████████████████████████████████████████████████████| 13/13 [00:04<00:00,  2.93batch/s, batch_size=6, total_processed=390, gpu_mem=0.4GB]
+  Embeddings shape: (390, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\coolant_line\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\coolant_line\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: electric_car_base
-Found 1195 images
-Computing embeddings: 100%|████████████████████████████████████████████████████| 38/38 [00:13<00:00,  2.89batch/s, batch_size=11, total_processed=1195, gpu_mem=0.4GB]
-  Embeddings shape: (1195, 768), dtype=float32
+Found 2382 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████| 75/75 [00:25<00:00,  2.94batch/s, batch_size=14, total_processed=2382, gpu_mem=0.4GB]
+  Embeddings shape: (2382, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\electric_car_base\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\electric_car_base\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: full_silver_sheet
-Found 1649 images
-Computing embeddings: 100%|████████████████████████████████████████████████████| 52/52 [00:15<00:00,  3.28batch/s, batch_size=17, total_processed=1649, gpu_mem=0.4GB]
-  Embeddings shape: (1649, 768), dtype=float32
+Found 1746 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████| 55/55 [00:16<00:00,  3.31batch/s, batch_size=18, total_processed=1746, gpu_mem=0.4GB]
+  Embeddings shape: (1746, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\full_silver_sheet\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\full_silver_sheet\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: green_line
-Found 836 images
-Computing embeddings: 100%|██████████████████████████████████████████████████████| 27/27 [00:06<00:00,  3.87batch/s, batch_size=4, total_processed=836, gpu_mem=0.4GB]
-  Embeddings shape: (836, 768), dtype=float32
+Found 818 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 26/26 [00:06<00:00,  4.05batch/s, batch_size=18, total_processed=818, gpu_mem=0.4GB]
+  Embeddings shape: (818, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\green_line\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\green_line\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: grey_clamp_R
 Found 344 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 11/11 [00:02<00:00,  4.01batch/s, batch_size=24, total_processed=344, gpu_mem=0.4GB]
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 11/11 [00:02<00:00,  4.03batch/s, batch_size=24, total_processed=344, gpu_mem=0.4GB]
   Embeddings shape: (344, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\grey_clamp_R\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\grey_clamp_R\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: half_silver_sheet
-Found 344 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 11/11 [00:03<00:00,  3.26batch/s, batch_size=24, total_processed=344, gpu_mem=0.4GB]
-  Embeddings shape: (344, 768), dtype=float32
+Found 332 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 11/11 [00:03<00:00,  3.60batch/s, batch_size=12, total_processed=332, gpu_mem=0.4GB]
+  Embeddings shape: (332, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\half_silver_sheet\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\half_silver_sheet\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: hand_w_torque_driver_I20
-Found 67 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████████| 3/3 [00:00<00:00,  4.60batch/s, batch_size=3, total_processed=67, gpu_mem=0.4GB] 
-  Embeddings shape: (67, 768), dtype=float32
+Found 71 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████████| 3/3 [00:00<00:00,  4.88batch/s, batch_size=7, total_processed=71, gpu_mem=0.4GB] 
+  Embeddings shape: (71, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\hand_w_torque_driver_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\hand_w_torque_driver_I20\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: hand_w_torque_tool_back
-Found 145 images
-Computing embeddings: 100%|███████████████████████████████████████████████████████| 5/5 [00:01<00:00,  3.98batch/s, batch_size=17, total_processed=145, gpu_mem=0.4GB]
-  Embeddings shape: (145, 768), dtype=float32
+Found 146 images
+Computing embeddings: 100%|███████████████████████████████████████████████████████████████████████████| 5/5 [00:01<00:00,  4.00batch/s, batch_size=18, total_processed=146, gpu_mem=0.4GB]
+  Embeddings shape: (146, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\hand_w_torque_tool_back\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\hand_w_torque_tool_back\embeddings_dinov2_image_list.txt
 
@@ -245,25 +260,33 @@ Found 0 images
 
 --------------------------------------------------------------------------------
 Processing class folder: hands_w_torque_gun
-Found 687 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 22/22 [00:05<00:00,  3.76batch/s, batch_size=15, total_processed=687, gpu_mem=0.4GB]
-  Embeddings shape: (687, 768), dtype=float32
+Found 1197 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████| 38/38 [00:09<00:00,  3.81batch/s, batch_size=13, total_processed=1197, gpu_mem=0.4GB]
+  Embeddings shape: (1197, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\hands_w_torque_gun\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\hands_w_torque_gun\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: I20_car_base
-Found 992 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 31/31 [00:10<00:00,  2.94batch/s, batch_size=32, total_processed=992, gpu_mem=0.4GB]
-  Embeddings shape: (992, 768), dtype=float32
+Found 1339 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████| 42/42 [00:14<00:00,  2.98batch/s, batch_size=27, total_processed=1339, gpu_mem=0.4GB]
+  Embeddings shape: (1339, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\I20_car_base\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\I20_car_base\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
+Processing class folder: installed_coolant_line
+Found 1423 images
+Computing embeddings: 100%|████████████████████████████████████████████████████████████████████████| 45/45 [00:18<00:00,  2.44batch/s, batch_size=15, total_processed=1423, gpu_mem=0.4GB]
+  Embeddings shape: (1423, 768), dtype=float32
+  Saved embeddings to: cropped_imgs_by_class_bmw_7\installed_coolant_line\embeddings_dinov2.npy
+  Saved image mapping to: cropped_imgs_by_class_bmw_7\installed_coolant_line\embeddings_dinov2_image_list.txt
+
+--------------------------------------------------------------------------------
 Processing class folder: other_car_base
-Found 3004 images
-Computing embeddings: 100%|████████████████████████████████████████████████████| 94/94 [00:31<00:00,  2.95batch/s, batch_size=28, total_processed=3004, gpu_mem=0.4GB]
-  Embeddings shape: (3004, 768), dtype=float32
+Found 3226 images
+Computing embeddings: 100%|██████████████████████████████████████████████████████████████████████| 101/101 [00:35<00:00,  2.83batch/s, batch_size=26, total_processed=3226, gpu_mem=0.4GB]
+  Embeddings shape: (3226, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\other_car_base\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\other_car_base\embeddings_dinov2_image_list.txt
 
@@ -274,49 +297,49 @@ Found 0 images
 
 --------------------------------------------------------------------------------
 Processing class folder: round_wire_I20
-Found 36 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  7.02batch/s, batch_size=4, total_processed=36, gpu_mem=0.4GB] 
-  Embeddings shape: (36, 768), dtype=float32
+Found 37 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  5.94batch/s, batch_size=5, total_processed=37, gpu_mem=0.4GB] 
+  Embeddings shape: (37, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\round_wire_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\round_wire_I20\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: rubber_band
-Found 603 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 19/19 [00:04<00:00,  4.37batch/s, batch_size=27, total_processed=603, gpu_mem=0.4GB]
-  Embeddings shape: (603, 768), dtype=float32
+Found 689 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 22/22 [00:05<00:00,  3.73batch/s, batch_size=17, total_processed=689, gpu_mem=0.4GB]
+  Embeddings shape: (689, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\rubber_band\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\rubber_band\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: torque_tool_placed_back
-Found 187 images
-Computing embeddings: 100%|███████████████████████████████████████████████████████| 6/6 [00:01<00:00,  4.30batch/s, batch_size=27, total_processed=187, gpu_mem=0.4GB]
-  Embeddings shape: (187, 768), dtype=float32
+Found 186 images
+Computing embeddings: 100%|███████████████████████████████████████████████████████████████████████████| 6/6 [00:01<00:00,  3.47batch/s, batch_size=26, total_processed=186, gpu_mem=0.4GB]
+  Embeddings shape: (186, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\torque_tool_placed_back\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\torque_tool_placed_back\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: triangle_frame_I20
-Found 515 images
-Computing embeddings: 100%|██████████████████████████████████████████████████████| 17/17 [00:03<00:00,  4.70batch/s, batch_size=3, total_processed=515, gpu_mem=0.4GB]
-  Embeddings shape: (515, 768), dtype=float32
+Found 693 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 22/22 [00:06<00:00,  3.52batch/s, batch_size=21, total_processed=693, gpu_mem=0.4GB]
+  Embeddings shape: (693, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\triangle_frame_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\triangle_frame_I20\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: vent_I20
-Found 667 images
-Computing embeddings: 100%|█████████████████████████████████████████████████████| 21/21 [00:04<00:00,  4.60batch/s, batch_size=27, total_processed=667, gpu_mem=0.4GB]
-  Embeddings shape: (667, 768), dtype=float32
+Found 865 images
+Computing embeddings: 100%|██████████████████████████████████████████████████████████████████████████| 28/28 [00:07<00:00,  3.69batch/s, batch_size=1, total_processed=865, gpu_mem=0.4GB]
+  Embeddings shape: (865, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\vent_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\vent_I20\embeddings_dinov2_image_list.txt
 
 --------------------------------------------------------------------------------
 Processing class folder: yellow_part_I20
-Found 483 images
-Computing embeddings: 100%|██████████████████████████████████████████████████████| 16/16 [00:03<00:00,  4.17batch/s, batch_size=3, total_processed=483, gpu_mem=0.4GB]
-  Embeddings shape: (483, 768), dtype=float32
+Found 491 images
+Computing embeddings: 100%|█████████████████████████████████████████████████████████████████████████| 16/16 [00:05<00:00,  3.20batch/s, batch_size=11, total_processed=491, gpu_mem=0.4GB]
+  Embeddings shape: (491, 768), dtype=float32
   Saved embeddings to: cropped_imgs_by_class_bmw_7\yellow_part_I20\embeddings_dinov2.npy
   Saved image mapping to: cropped_imgs_by_class_bmw_7\yellow_part_I20\embeddings_dinov2_image_list.txt
 
@@ -326,13 +349,13 @@ Done. Per-class embeddings have been saved as <class>/embeddings_dinov2.npy
 
 🧹 Clearing memory...
    GPU Memory: 0.00GB allocated, 0.00GB reserved
-   RAM Usage: 60.6% (9.9GB / 16.3GB)
+   RAM Usage: 52.6% (8.6GB / 16.3GB)
    ✅ Memory cleared
 
 
-❄️  Cooling break: 30 seconds...
+❄️  Cooling break: 10 seconds...
    This prevents thermal throttling on your laptop GPU
-    30 seconds remaining.../r   ⏳ 25 seconds remaining.../r   ⏳ 20 seconds remaining.../r   ⏳ 15 seconds remaining.../r   ⏳ 10 seconds remaining.../r   ⏳ 5 seconds remaining.../r
+   ⏳ 10 seconds remaining.../r   ⏳ 5 seconds remaining.../r
    ✅ Cooling break complete
 
 
@@ -350,193 +373,230 @@ INTRA-CLASS CLUSTERING ANALYSIS
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: black_region (6042 samples)
-  Auto-tuned eps: 0.1541
+Processing: black_region (8040 samples)
+  Auto-tuned eps: 0.1479
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 black_region:
-  - Found 24 sub-clusters
-  - Identified 429 outliers (7.1%)
+  - Found 48 sub-clusters
+  - Identified 588 outliers (7.3%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\black_region_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\black_region_samples
-    - outliers: saved 15/429 samples
-    - cluster_0: saved 15/2838 samples
+    - outliers: saved 588/588 samples
+    - cluster_0: saved 20/3629 samples
     - cluster_1: saved 4/4 samples
-    - cluster_2: saved 15/2582 samples
-    - cluster_3: saved 4/4 samples
-    - cluster_4: saved 4/4 samples
+    - cluster_2: saved 20/3512 samples
+    - cluster_3: saved 12/12 samples
+    - cluster_4: saved 5/5 samples
     - cluster_5: saved 5/5 samples
-    - cluster_6: saved 5/5 samples
-    - cluster_7: saved 5/5 samples
-    - cluster_8: saved 5/5 samples
-    - cluster_9: saved 15/25 samples
-    - cluster_10: saved 3/3 samples
-    - cluster_11: saved 3/3 samples
-    - cluster_12: saved 3/3 samples
-    - cluster_13: saved 3/3 samples
-    - cluster_14: saved 3/3 samples
+    - cluster_6: saved 4/4 samples
+    - cluster_7: saved 20/27 samples
+    - cluster_8: saved 4/4 samples
+    - cluster_9: saved 4/4 samples
+    - cluster_10: saved 4/4 samples
+    - cluster_11: saved 4/4 samples
+    - cluster_12: saved 6/6 samples
+    - cluster_13: saved 5/5 samples
+    - cluster_14: saved 10/10 samples
     - cluster_15: saved 3/3 samples
-    - cluster_16: saved 3/3 samples
-    - cluster_17: saved 7/7 samples
+    - cluster_16: saved 5/5 samples
+    - cluster_17: saved 3/3 samples
     - cluster_18: saved 3/3 samples
     - cluster_19: saved 3/3 samples
-    - cluster_20: saved 3/3 samples
-    - cluster_21: saved 15/92 samples
-    - cluster_22: saved 3/3 samples
-    - cluster_23: saved 4/4 samples
+    - cluster_20: saved 6/6 samples
+    - cluster_21: saved 7/7 samples
+    - cluster_22: saved 12/12 samples
+    - cluster_23: saved 3/3 samples
+    - cluster_24: saved 3/3 samples
+    - cluster_25: saved 3/3 samples
+    - cluster_26: saved 3/3 samples
+    - cluster_27: saved 3/3 samples
+    - cluster_28: saved 3/3 samples
+    - cluster_29: saved 3/3 samples
+    - cluster_30: saved 3/3 samples
+    - cluster_31: saved 5/5 samples
+    - cluster_32: saved 20/82 samples
+    - cluster_33: saved 3/3 samples
+    - cluster_34: saved 3/3 samples
+    - cluster_35: saved 4/4 samples
+    - cluster_36: saved 3/3 samples
+    - cluster_37: saved 9/9 samples
+    - cluster_38: saved 7/7 samples
+    - cluster_39: saved 3/3 samples
+    - cluster_40: saved 3/3 samples
+    - cluster_41: saved 4/4 samples
+    - cluster_42: saved 3/3 samples
+    - cluster_43: saved 8/8 samples
+    - cluster_44: saved 5/5 samples
+    - cluster_45: saved 3/3 samples
+    - cluster_46: saved 3/3 samples
+    - cluster_47: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\black_region_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: black_sheet (235 samples)
-  Auto-tuned eps: 0.3221
+Processing: black_sheet (234 samples)
+  Auto-tuned eps: 0.3241
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 black_sheet:
   - Found 1 sub-clusters
-  - Identified 15 outliers (6.4%)
+  - Identified 14 outliers (6.0%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\black_sheet_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\black_sheet_samples
-    - outliers: saved 15/15 samples
-    - cluster_0: saved 15/220 samples
+    - outliers: saved 14/14 samples
+    - cluster_0: saved 20/220 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\black_sheet_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: cable_I20 (65 samples)
-  Auto-tuned eps: 0.4294
+Processing: cable_I20 (75 samples)
+  Auto-tuned eps: 0.3853
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 cable_I20:
-  - Found 2 sub-clusters
-  - Identified 2 outliers (3.1%)
+  - Found 1 sub-clusters
+  - Identified 4 outliers (5.3%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\cable_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\cable_I20_samples
-    - outliers: saved 2/2 samples
-    - cluster_0: saved 15/60 samples
-    - cluster_1: saved 3/3 samples
+    - outliers: saved 4/4 samples
+    - cluster_0: saved 20/71 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\cable_I20_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: clipping_pose (395 samples)
-  Auto-tuned eps: 0.3319
+Processing: clipping_pose (697 samples)
+  Auto-tuned eps: 0.3162
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 clipping_pose:
-  - Found 1 sub-clusters
-  - Identified 21 outliers (5.3%)
+  - Found 2 sub-clusters
+  - Identified 44 outliers (6.3%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\clipping_pose_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\clipping_pose_samples
-    - outliers: saved 15/21 samples
-    - cluster_0: saved 15/374 samples
+    - outliers: saved 44/44 samples
+    - cluster_0: saved 20/646 samples
+    - cluster_1: saved 7/7 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\clipping_pose_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: connector_box_I20 (49 samples)
-  Auto-tuned eps: 0.3239
+Processing: connector_box_I20 (53 samples)
+  Auto-tuned eps: 0.3254
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 connector_box_I20:
   - Found 1 sub-clusters
-  - Identified 3 outliers (6.1%)
+  - Identified 2 outliers (3.8%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\connector_box_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\connector_box_I20_samples
-    - outliers: saved 3/3 samples
-    - cluster_0: saved 15/46 samples
+    - outliers: saved 2/2 samples
+    - cluster_0: saved 20/51 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\connector_box_I20_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: coolant_line (171 samples)
-  Auto-tuned eps: 0.3550
+Processing: coolant_line (390 samples)
+  Auto-tuned eps: 0.3148
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 coolant_line:
-  - Found 1 sub-clusters
-  - Identified 9 outliers (5.3%)
+  - Found 3 sub-clusters
+  - Identified 25 outliers (6.4%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\coolant_line_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\coolant_line_samples
-    - outliers: saved 9/9 samples
-    - cluster_0: saved 15/162 samples
+    - outliers: saved 25/25 samples
+    - cluster_0: saved 20/357 samples
+    - cluster_1: saved 3/3 samples
+    - cluster_2: saved 5/5 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\coolant_line_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: electric_car_base (1195 samples)
-  Auto-tuned eps: 0.0949
+Processing: electric_car_base (2382 samples)
+  Auto-tuned eps: 0.0793
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 electric_car_base:
-  - Found 11 sub-clusters
-  - Identified 97 outliers (8.1%)
+  - Found 20 sub-clusters
+  - Identified 189 outliers (7.9%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\electric_car_base_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\electric_car_base_samples
-    - outliers: saved 15/97 samples
-    - cluster_0: saved 15/651 samples
-    - cluster_1: saved 12/12 samples
-    - cluster_2: saved 15/406 samples
-    - cluster_3: saved 3/3 samples
-    - cluster_4: saved 3/3 samples
-    - cluster_5: saved 3/3 samples
-    - cluster_6: saved 4/4 samples
-    - cluster_7: saved 7/7 samples
-    - cluster_8: saved 3/3 samples
-    - cluster_9: saved 3/3 samples
+    - outliers: saved 189/189 samples
+    - cluster_0: saved 8/8 samples
+    - cluster_1: saved 20/1463 samples
+    - cluster_2: saved 8/8 samples
+    - cluster_3: saved 20/642 samples
+    - cluster_4: saved 14/14 samples
+    - cluster_5: saved 6/6 samples
+    - cluster_6: saved 3/3 samples
+    - cluster_7: saved 4/4 samples
+    - cluster_8: saved 4/4 samples
+    - cluster_9: saved 6/6 samples
     - cluster_10: saved 3/3 samples
-  - Saved montage: clustering_results_txt_files_dinov2_bmw_7\electric_car_base_montage.png
+    - cluster_11: saved 4/4 samples
+    - cluster_12: saved 3/3 samples
+    - cluster_13: saved 3/3 samples
+    - cluster_14: saved 7/7 samples
+    - cluster_15: saved 3/3 samples
+    - cluster_16: saved 3/3 samples
+    - cluster_17: saved 3/3 samples
+    - cluster_18: saved 3/3 samples
+    - cluster_19: saved 3/3 samples
+    - Saved montage: clustering_results_txt_files_dinov2_bmw_7\electric_car_base_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: full_silver_sheet (1649 samples)
-  Auto-tuned eps: 0.1503
+Processing: full_silver_sheet (1746 samples)
+  Auto-tuned eps: 0.1477
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 full_silver_sheet:
-  - Found 10 sub-clusters
-  - Identified 111 outliers (6.7%)
+  - Found 9 sub-clusters
+  - Identified 114 outliers (6.5%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\full_silver_sheet_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\full_silver_sheet_samples
-    - outliers: saved 15/111 samples
-    - cluster_0: saved 15/1432 samples
-    - cluster_1: saved 15/50 samples
+    - outliers: saved 114/114 samples
+    - cluster_0: saved 20/1541 samples
+    - cluster_1: saved 20/49 samples
     - cluster_2: saved 5/5 samples
     - cluster_3: saved 11/11 samples
     - cluster_4: saved 4/4 samples
-    - cluster_5: saved 14/14 samples
-    - cluster_6: saved 4/4 samples
-    - cluster_7: saved 6/6 samples
-    - cluster_8: saved 9/9 samples
-    - cluster_9: saved 3/3 samples
+    - cluster_5: saved 3/3 samples
+    - cluster_6: saved 6/6 samples
+    - cluster_7: saved 10/10 samples
+    - cluster_8: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\full_silver_sheet_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: green_line (836 samples)
-  Auto-tuned eps: 0.2963
+Processing: green_line (818 samples)
+  Auto-tuned eps: 0.2547
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 green_line:
-  - Found 5 sub-clusters
-  - Identified 56 outliers (6.7%)
+  - Found 8 sub-clusters
+  - Identified 58 outliers (7.1%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\green_line_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\green_line_samples
-    - outliers: saved 15/56 samples
-    - cluster_0: saved 15/758 samples
-    - cluster_1: saved 3/3 samples
-    - cluster_2: saved 12/12 samples
-    - cluster_3: saved 3/3 samples
-    - cluster_4: saved 4/4 samples
+    - outliers: saved 58/58 samples
+    - cluster_0: saved 20/719 samples
+    - cluster_1: saved 7/7 samples
+    - cluster_2: saved 3/3 samples
+    - cluster_3: saved 8/8 samples
+    - cluster_4: saved 10/10 samples
+    - cluster_5: saved 3/3 samples
+    - cluster_6: saved 3/3 samples
+    - cluster_7: saved 7/7 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\green_line_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
@@ -551,187 +611,213 @@ grey_clamp_R:
   - Identified 20 outliers (5.8%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\grey_clamp_R_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\grey_clamp_R_samples
-    - outliers: saved 15/20 samples
-    - cluster_0: saved 15/324 samples
+    - outliers: saved 20/20 samples
+    - cluster_0: saved 20/324 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\grey_clamp_R_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: half_silver_sheet (344 samples)
-  Auto-tuned eps: 0.2303
+Processing: half_silver_sheet (332 samples)
+  Auto-tuned eps: 0.2179
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 half_silver_sheet:
-  - Found 2 sub-clusters
-  - Identified 24 outliers (7.0%)
+  - Found 4 sub-clusters
+  - Identified 26 outliers (7.8%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\half_silver_sheet_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\half_silver_sheet_samples
-    - outliers: saved 15/24 samples
-    - cluster_0: saved 15/316 samples
-    - cluster_1: saved 4/4 samples
+    - outliers: saved 26/26 samples
+    - cluster_0: saved 20/258 samples
+    - cluster_1: saved 20/41 samples
+    - cluster_2: saved 3/3 samples
+    - cluster_3: saved 4/4 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\half_silver_sheet_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: hand_w_torque_driver_I20 (67 samples)
-  Auto-tuned eps: 0.3169
+Processing: hand_w_torque_driver_I20 (71 samples)
+  Auto-tuned eps: 0.3139
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 hand_w_torque_driver_I20:
   - Found 1 sub-clusters
-  - Identified 5 outliers (7.5%)
+  - Identified 5 outliers (7.0%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\hand_w_torque_driver_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\hand_w_torque_driver_I20_samples
     - outliers: saved 5/5 samples
-    - cluster_0: saved 15/62 samples
+    - cluster_0: saved 20/66 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\hand_w_torque_driver_I20_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: hand_w_torque_tool_back (145 samples)
-  Auto-tuned eps: 0.3055
+Processing: hand_w_torque_tool_back (146 samples)
+  Auto-tuned eps: 0.3078
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 hand_w_torque_tool_back:
   - Found 1 sub-clusters
-  - Identified 12 outliers (8.3%)
+  - Identified 13 outliers (8.9%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\hand_w_torque_tool_back_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\hand_w_torque_tool_back_samples
-    - outliers: saved 12/12 samples
-    - cluster_0: saved 15/133 samples
+    - outliers: saved 13/13 samples
+    - cluster_0: saved 20/133 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\hand_w_torque_tool_back_montage.png
 
 ⚠️  Skipping hands - no embeddings found.
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: hands_w_torque_gun (687 samples)
-  Auto-tuned eps: 0.3066
+Processing: hands_w_torque_gun (1197 samples)
+  Auto-tuned eps: 0.3098
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 hands_w_torque_gun:
   - Found 1 sub-clusters
-  - Identified 30 outliers (4.4%)
+  - Identified 69 outliers (5.8%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\hands_w_torque_gun_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\hands_w_torque_gun_samples
-    - outliers: saved 15/30 samples
-    - cluster_0: saved 15/657 samples
+    - outliers: saved 69/69 samples
+    - cluster_0: saved 20/1128 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\hands_w_torque_gun_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: I20_car_base (992 samples)
-  Auto-tuned eps: 0.1326
+Processing: I20_car_base (1339 samples)
+  Auto-tuned eps: 0.1196
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 I20_car_base:
-  - Found 7 sub-clusters
-  - Identified 69 outliers (7.0%)
+  - Found 8 sub-clusters
+  - Identified 93 outliers (6.9%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\I20_car_base_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\I20_car_base_samples
-    - outliers: saved 15/69 samples
-    - cluster_0: saved 15/890 samples
-    - cluster_1: saved 8/8 samples
-    - cluster_2: saved 9/9 samples
-    - cluster_3: saved 4/4 samples
-    - cluster_4: saved 3/3 samples
-    - cluster_5: saved 3/3 samples
-    - cluster_6: saved 6/6 samples
+    - outliers: saved 93/93 samples
+    - cluster_0: saved 20/670 samples
+    - cluster_1: saved 20/536 samples
+    - cluster_2: saved 12/12 samples
+    - cluster_3: saved 9/9 samples
+    - cluster_4: saved 4/4 samples
+    - cluster_5: saved 5/5 samples
+    - cluster_6: saved 3/3 samples
+    - cluster_7: saved 7/7 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\I20_car_base_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: other_car_base (3004 samples)
-  Auto-tuned eps: 0.1069
+Processing: installed_coolant_line (1423 samples)
+  Auto-tuned eps: 0.1812
+C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+
+installed_coolant_line:
+  - Found 7 sub-clusters
+  - Identified 96 outliers (6.7%)
+  - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\installed_coolant_line_clusters.png
+  - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\installed_coolant_line_samples
+    - outliers: saved 96/96 samples
+    - cluster_0: saved 3/3 samples
+    - cluster_1: saved 20/22 samples
+    - cluster_2: saved 20/1285 samples
+    - cluster_3: saved 4/4 samples
+    - cluster_4: saved 4/4 samples
+    - cluster_5: saved 3/3 samples
+    - cluster_6: saved 6/6 samples
+    - Saved montage: clustering_results_txt_files_dinov2_bmw_7\installed_coolant_line_montage.png
+
+✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
+
+Processing: other_car_base (3226 samples)
+  Auto-tuned eps: 0.1044
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 other_car_base:
-  - Found 23 sub-clusters
-  - Identified 230 outliers (7.7%)
+  - Found 24 sub-clusters
+  - Identified 250 outliers (7.7%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\other_car_base_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\other_car_base_samples
-    - outliers: saved 15/230 samples
-    - cluster_0: saved 15/2630 samples
-    - cluster_1: saved 15/27 samples
-    - cluster_2: saved 3/3 samples
-    - cluster_3: saved 7/7 samples
-    - cluster_4: saved 3/3 samples
-    - cluster_5: saved 6/6 samples
-    - cluster_6: saved 5/5 samples
-    - cluster_7: saved 8/8 samples
-    - cluster_8: saved 4/4 samples
-    - cluster_9: saved 3/3 samples
-    - cluster_10: saved 4/4 samples
-    - cluster_11: saved 3/3 samples
-    - cluster_12: saved 5/5 samples
-    - cluster_13: saved 3/3 samples
-    - cluster_14: saved 15/21 samples
-    - cluster_15: saved 15/16 samples
+    - outliers: saved 250/250 samples
+    - cluster_0: saved 20/49 samples
+    - cluster_1: saved 20/26 samples
+    - cluster_2: saved 20/2774 samples
+    - cluster_3: saved 3/3 samples
+    - cluster_4: saved 7/7 samples
+    - cluster_5: saved 3/3 samples
+    - cluster_6: saved 6/6 samples
+    - cluster_7: saved 5/5 samples
+    - cluster_8: saved 8/8 samples
+    - cluster_9: saved 4/4 samples
+    - cluster_10: saved 3/3 samples
+    - cluster_11: saved 4/4 samples
+    - cluster_12: saved 3/3 samples
+    - cluster_13: saved 5/5 samples
+    - cluster_14: saved 20/36 samples
+    - cluster_15: saved 12/12 samples
     - cluster_16: saved 5/5 samples
     - cluster_17: saved 4/4 samples
     - cluster_18: saved 4/4 samples
-    - cluster_19: saved 4/4 samples
+    - cluster_19: saved 3/3 samples
     - cluster_20: saved 3/3 samples
     - cluster_21: saved 3/3 samples
     - cluster_22: saved 3/3 samples
+    - cluster_23: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\other_car_base_montage.png
 
 ⚠️  Skipping person - no embeddings found.
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: round_wire_I20 (36 samples)
-  Auto-tuned eps: 0.3460
+Processing: round_wire_I20 (37 samples)
+  Auto-tuned eps: 0.3437
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 round_wire_I20:
   - Found 2 sub-clusters
-  - Identified 1 outliers (2.8%)
+  - Identified 1 outliers (2.7%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\round_wire_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\round_wire_I20_samples
     - outliers: saved 1/1 samples
-    - cluster_0: saved 15/32 samples
+    - cluster_0: saved 20/33 samples
     - cluster_1: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\round_wire_I20_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: rubber_band (603 samples)
-  Auto-tuned eps: 0.2515
+Processing: rubber_band (689 samples)
+  Auto-tuned eps: 0.2421
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 rubber_band:
   - Found 2 sub-clusters
-  - Identified 43 outliers (7.1%)
+  - Identified 42 outliers (6.1%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\rubber_band_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\rubber_band_samples
-    - outliers: saved 15/43 samples
-    - cluster_0: saved 15/556 samples
-    - cluster_1: saved 4/4 samples
+    - outliers: saved 42/42 samples
+    - cluster_0: saved 20/644 samples
+    - cluster_1: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\rubber_band_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: torque_tool_placed_back (187 samples)
-  Auto-tuned eps: 0.0735
+Processing: torque_tool_placed_back (186 samples)
+  Auto-tuned eps: 0.0722
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 torque_tool_placed_back:
   - Found 4 sub-clusters
-  - Identified 11 outliers (5.9%)
+  - Identified 10 outliers (5.4%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\torque_tool_placed_back_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\torque_tool_placed_back_samples
-    - outliers: saved 11/11 samples
-    - cluster_0: saved 15/165 samples
+    - outliers: saved 10/10 samples
+    - cluster_0: saved 20/165 samples
     - cluster_1: saved 3/3 samples
     - cluster_2: saved 3/3 samples
     - cluster_3: saved 5/5 samples
@@ -739,84 +825,91 @@ torque_tool_placed_back:
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: triangle_frame_I20 (515 samples)
-  Auto-tuned eps: 0.2099
+Processing: triangle_frame_I20 (693 samples)
+  Auto-tuned eps: 0.1903
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 triangle_frame_I20:
-  - Found 1 sub-clusters
-  - Identified 37 outliers (7.2%)
+  - Found 3 sub-clusters
+  - Identified 53 outliers (7.6%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\triangle_frame_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\triangle_frame_I20_samples
-    - outliers: saved 15/37 samples
-    - cluster_0: saved 15/478 samples
+    - outliers: saved 53/53 samples
+    - cluster_0: saved 20/631 samples
+    - cluster_1: saved 5/5 samples
+    - cluster_2: saved 4/4 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\triangle_frame_I20_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: vent_I20 (667 samples)
-  Auto-tuned eps: 0.1214
+Processing: vent_I20 (865 samples)
+  Auto-tuned eps: 0.1118
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 vent_I20:
-  - Found 4 sub-clusters
-  - Identified 54 outliers (8.1%)
+  - Found 7 sub-clusters
+  - Identified 67 outliers (7.7%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\vent_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\vent_I20_samples
-    - outliers: saved 15/54 samples
-    - cluster_0: saved 15/299 samples
-    - cluster_1: saved 15/305 samples
-    - cluster_2: saved 6/6 samples
-    - cluster_3: saved 3/3 samples
+    - outliers: saved 67/67 samples
+    - cluster_0: saved 20/300 samples
+    - cluster_1: saved 6/6 samples
+    - cluster_2: saved 20/476 samples
+    - cluster_3: saved 4/4 samples
+    - cluster_4: saved 4/4 samples
+    - cluster_5: saved 5/5 samples
+    - cluster_6: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\vent_I20_montage.png
 
 ✓ Using saved image mapping from: embeddings_dinov2_image_list.txt
 
-Processing: yellow_part_I20 (483 samples)
-  Auto-tuned eps: 0.1061
+Processing: yellow_part_I20 (491 samples)
+  Auto-tuned eps: 0.1040
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
 
 yellow_part_I20:
-  - Found 4 sub-clusters
-  - Identified 39 outliers (8.1%)
+  - Found 5 sub-clusters
+  - Identified 39 outliers (7.9%)
   - Saved visualization: clustering_results_txt_files_dinov2_bmw_7\yellow_part_I20_clusters.png
   - Saving sample images to: clustering_results_txt_files_dinov2_bmw_7\yellow_part_I20_samples
-    - outliers: saved 15/39 samples
-    - cluster_0: saved 15/138 samples
-    - cluster_1: saved 6/6 samples
-    - cluster_2: saved 15/297 samples
-    - cluster_3: saved 3/3 samples
+    - outliers: saved 39/39 samples
+    - cluster_0: saved 20/138 samples
+    - cluster_1: saved 20/298 samples
+    - cluster_2: saved 7/7 samples
+    - cluster_3: saved 6/6 samples
+    - cluster_4: saved 3/3 samples
   - Saved montage: clustering_results_txt_files_dinov2_bmw_7\yellow_part_I20_montage.png
 
 Saved overview: clustering_results_txt_files_dinov2_bmw_7\all_classes_overview.png
 
 Summary:
                    class  n_samples  n_clusters  n_outliers outlier_rate  eps_used
-            black_region       6042          24         429         7.1%  0.154064
-             black_sheet        235           1          15         6.4%  0.322121
-               cable_I20         65           2           2         3.1%  0.429372
-           clipping_pose        395           1          21         5.3%  0.331876
-       connector_box_I20         49           1           3         6.1%  0.323945
-            coolant_line        171           1           9         5.3%  0.354999
-       electric_car_base       1195          11          97         8.1%  0.094850
-       full_silver_sheet       1649          10         111         6.7%  0.150345
-              green_line        836           5          56         6.7%  0.296311
+            black_region       8040          48         588         7.3%  0.147900
+             black_sheet        234           1          14         6.0%  0.324052
+               cable_I20         75           1           4         5.3%  0.385291
+           clipping_pose        697           2          44         6.3%  0.316211
+       connector_box_I20         53           1           2         3.8%  0.325385
+            coolant_line        390           3          25         6.4%  0.314769
+       electric_car_base       2382          20         189         7.9%  0.079286
+       full_silver_sheet       1746           9         114         6.5%  0.147682
+              green_line        818           8          58         7.1%  0.254736
             grey_clamp_R        344           1          20         5.8%  0.175388
-       half_silver_sheet        344           2          24         7.0%  0.230308
-hand_w_torque_driver_I20         67           1           5         7.5%  0.316939
- hand_w_torque_tool_back        145           1          12         8.3%  0.305540
-      hands_w_torque_gun        687           1          30         4.4%  0.306572
-            I20_car_base        992           7          69         7.0%  0.132629
-          other_car_base       3004          23         230         7.7%  0.106899
-          round_wire_I20         36           2           1         2.8%  0.346024
-             rubber_band        603           2          43         7.1%  0.251540
- torque_tool_placed_back        187           4          11         5.9%  0.073487
-      triangle_frame_I20        515           1          37         7.2%  0.209868
-                vent_I20        667           4          54         8.1%  0.121393
-         yellow_part_I20        483           4          39         8.1%  0.106051
+       half_silver_sheet        332           4          26         7.8%  0.217947
+hand_w_torque_driver_I20         71           1           5         7.0%  0.313938
+ hand_w_torque_tool_back        146           1          13         8.9%  0.307813
+      hands_w_torque_gun       1197           1          69         5.8%  0.309769
+            I20_car_base       1339           8          93         6.9%  0.119571
+  installed_coolant_line       1423           7          96         6.7%  0.181175
+          other_car_base       3226          24         250         7.7%  0.104412
+          round_wire_I20         37           2           1         2.7%  0.343669
+             rubber_band        689           2          42         6.1%  0.242129
+ torque_tool_placed_back        186           4          10         5.4%  0.072192
+      triangle_frame_I20        693           3          53         7.6%  0.190334
+                vent_I20        865           7          67         7.7%  0.111766
+         yellow_part_I20        491           5          39         7.9%  0.104015
 
 Saved statistics: clustering_results_txt_files_dinov2_bmw_7\cluster_statistics.csv
 
@@ -825,7 +918,7 @@ CROSS-CLASS ANALYSIS (Optional)
 ============================================================
 C:\Users\Lenovo\miniconda3\envs\yolo_env\lib\site-packages\umap\umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
-Discovered 155 clusters across all classes
+Discovered 195 clusters across all classes
 Saved cross-class visualization: clustering_results_txt_files_dinov2_bmw_7\cross_class_separability.png
 
 ============================================================
@@ -840,7 +933,7 @@ Analysis complete! Check the output directory for:
 
 🧹 Clearing memory...
    GPU Memory: 0.00GB allocated, 0.00GB reserved
-   RAM Usage: 55.8% (9.1GB / 16.3GB)
+   RAM Usage: 50.2% (8.2GB / 16.3GB)
    ✅ Memory cleared
 
 

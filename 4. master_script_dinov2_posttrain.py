@@ -143,7 +143,7 @@ def main():
     print("STEP 1/3: EXTRACTING BOUNDING BOXES FROM VIDEO")
     print("⚠️  This step is time-consuming")
     print("="*60)
-    run_step("1. yolo_model_crop_bbox_per_class.py", [
+    run_step("scripts/1. yolo_model_crop_bbox_per_class.py", [
         "--model", model_path,
         "--video", video_path,
         "--classes"] + classes_space_separated + [
@@ -161,7 +161,7 @@ def main():
     print("⚠️  This step is GPU-intensive")
     print(f"   Processing ~{int(per_class_num_frames) * len(classes_space_separated)} images")
     
-    run_step("2. save_dinov2_embeddings_per_class.py", [
+    run_step("scripts/2. save_dinov2_embeddings_per_class.py", [
         "--root", cropped_bbox_dir,
         "--batch", batch_size,
         "--save_suffix", save_suffix
@@ -172,7 +172,7 @@ def main():
     print("\n" + "="*60)
     print("STEP 3/3: CLUSTERING ANALYSIS")
     print("="*60)
-    run_step("3. clustering_of_classes_embeddings.py", [
+    run_step("scripts/3. clustering_of_classes_embeddings.py", [
         "--root", cropped_bbox_dir,
         "--eps", epsilon,
         "--min_samples", min_pts,

@@ -23,6 +23,7 @@ python '.\1. ann_txt_files_crop_bbox.py' --imgs_label_path "C:/VkRetro/YoloDetec
 import os
 import cv2
 import argparse
+from tqdm import tqdm
 
 def yolo_to_bbox(x_center, y_center, width, height, img_width, img_height):
     """Convert YOLO format (normalized) to absolute pixel coordinates"""
@@ -108,9 +109,8 @@ def main():
     
     ## WALK THROUGH WHOLE DATASET
     crop_counts = {cls: 0 for cls in classes_to_target}
-    processed_files = 0
-    
-    for txt_file in txt_files:
+
+    for txt_file in tqdm(txt_files, desc="Processing annotations", unit="file"):
         txt_path = os.path.join(dataset_path, txt_file)
         
         # Find corresponding image
@@ -180,15 +180,11 @@ def main():
             
             cv2.imwrite(output_path, cropped)
             crop_counts[class_id] += 1
-        
-        processed_files += 1
-        if processed_files % 100 == 0:
-            print(f"Processed {processed_files}/{len(txt_files)} files...")
-    
+
     print("\n------------------------------------------------------------")
     print("|                        SUMMARY                           |")
     print("------------------------------------------------------------")
-    print(f"Total files processed: {processed_files}")
+    print(f"Total files processed: {len(txt_files)}")
     print(f"Output directory: {output_base}")
     print("\nCrops extracted per class:")
     for class_id in classes_to_target:
