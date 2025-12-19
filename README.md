@@ -196,9 +196,47 @@ python "scripts/1. ann_txt_files_crop_bbox.py" \
 #### What It Does
 1. Validates dataset (checks image-label pairing)
 2. Verifies class mapping completeness
-3. Converts YOLO normalized coords → pixel coords
-4. Crops bounding boxes per class
-5. Saves to class-specific folders
+3. **Scans for unexpected class IDs** (annotation errors)
+4. **Reports class distribution** with imbalance warnings
+5. Converts YOLO normalized coords → pixel coords
+6. Crops bounding boxes per class
+7. Saves to class-specific folders
+
+#### Dataset Validation Output
+The script performs comprehensive validation before cropping:
+
+```
+------------------------------------------------------------
+|                 VALIDATING ANNOTATIONS                   |
+------------------------------------------------------------
+
+❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):
+    Expected class IDs: ['0', '1', '2', '3', '4']
+    -----------------------------------------------
+    Class ID '5': 12 annotations in 3 file(s)
+        - frame_001.txt
+        - frame_042.txt
+        - frame_089.txt
+
+    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!
+
+📊  CLASS DISTRIBUTION (all annotations in dataset):
+    Class 0 (board): 450 annotations (30.2%)
+    Class 1 (screw): 520 annotations (34.9%)
+    Class 2 (screw_holder): 380 annotations (25.5%)
+    Class 3 (tape): 128 annotations (8.6%)
+    Class 4 (case): 12 annotations (0.8%)
+⚠️  Class ID '5': 12 annotations (UNKNOWN)
+
+⚠️  CLASS IMBALANCE WARNING: Ratio 520:12 = 43.3x
+    Consider balancing your dataset for better YOLO training.
+```
+
+This catches:
+- **Annotation typos**: Wrong class IDs from human error
+- **Extra classes**: Accidentally created classes during labeling
+- **Class imbalance**: >10x ratio between largest/smallest class
+- **Empty annotation files**: Images with no objects labeled
 
 #### Output Structure
 ```

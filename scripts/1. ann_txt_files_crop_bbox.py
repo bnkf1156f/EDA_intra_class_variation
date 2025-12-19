@@ -85,6 +85,91 @@ def main():
 
     ## CHECK FOR CLASSES
     class_map = dict(zip(args.class_ids_to_names[::2], args.class_ids_to_names[1::2]))
+
+    # =========================================================================
+    # DATASET VALIDATION: Scan for unexpected class IDs and class distribution
+    # =========================================================================
+    print("\n------------------------------------------------------------")
+    print("|                 VALIDATING ANNOTATIONS                   |")
+    print("------------------------------------------------------------")
+
+    unexpected_classes = {}  # {class_id: [list of files]}
+    class_annotation_counts = {}  # {class_id: count} for ALL classes found
+    empty_annotation_files = []
+
+    for txt_file in txt_files:
+        if txt_file == "classes.txt":
+            continue
+        txt_path = os.path.join(dataset_path, txt_file)
+        with open(txt_path, 'r') as f:
+            lines = f.readlines()
+
+        if len(lines) == 0:
+            empty_annotation_files.append(txt_file)
+            continue
+
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) < 5:
+                print(f"⚠️  Invalid Annotation File: {txt_file}")
+                continue
+            class_id = parts[0]
+
+            # Count all annotations
+            class_annotation_counts[class_id] = class_annotation_counts.get(class_id, 0) + 1
+
+            # Check if class is unexpected (not in our mapping)
+            if class_id not in class_map:
+                if class_id not in unexpected_classes:
+                    unexpected_classes[class_id] = []
+                if txt_file not in unexpected_classes[class_id]:
+                    unexpected_classes[class_id].append(txt_file)
+
+    # Report unexpected classes
+    if unexpected_classes:
+        print(f"\n❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):")
+        print(f"    Expected class IDs: {list(class_map.keys())}")
+        print(f"    -----------------------------------------------")
+        for cls_id, files in unexpected_classes.items():
+            count = class_annotation_counts.get(cls_id, 0)
+            print(f"    Class ID '{cls_id}': {count} annotations in {len(files)} file(s)")
+            # Show first 5 files as examples
+            for f in files[:5]:
+                print(f"        - {f}")
+            if len(files) > 5:
+                print(f"        ... and {len(files) - 5} more files")
+        print(f"\n    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!")
+    else:
+        print(f"✅  All annotations use valid class IDs")
+
+    # Report class distribution
+    print(f"\n📊  CLASS DISTRIBUTION (all annotations in dataset):")
+    expected_ids = set(class_map.keys())
+    total_annotations = sum(class_annotation_counts.values())
+
+    for cls_id in sorted(class_annotation_counts.keys(), key=lambda x: int(x) if x.isdigit() else float('inf')):
+        count = class_annotation_counts[cls_id]
+        percentage = (count / total_annotations * 100) if total_annotations > 0 else 0
+        name = class_map.get(cls_id, "UNKNOWN")
+        marker = "⚠️ " if cls_id not in expected_ids else "   "
+        print(f"{marker} Class {cls_id} ({name}): {count} annotations ({percentage:.1f}%)")
+
+    # Class imbalance warning
+    if class_annotation_counts:
+        counts = [class_annotation_counts.get(c, 0) for c in expected_ids]
+        counts = [c for c in counts if c > 0]  # Only count classes that exist
+        if counts:
+            max_count = max(counts)
+            min_count = min(counts)
+            if min_count > 0 and max_count / min_count > 10:
+                print(f"\n⚠️  CLASS IMBALANCE WARNING: Ratio {max_count}:{min_count} = {max_count/min_count:.1f}x")
+                print(f"    Consider balancing your dataset for better YOLO training.")
+
+    # Empty files warning
+    if empty_annotation_files:
+        print(f"\n⚠️  {len(empty_annotation_files)} annotation file(s) are empty (no objects labelled)")
+
+    print("------------------------------------------------------------\n")
     classes_to_target = set(args.classes)
 
     missing_in_map = [cls for cls in classes_to_target if cls not in class_map]
