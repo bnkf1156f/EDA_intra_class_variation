@@ -123,7 +123,7 @@ max_cluster_samples = "5"
 
 ### Master Script Output
 
-Both scripts provide detailed progress tracking: https://github.com/bnkf1156f/EDA_intra_class_variation/blob/main/terminal_ouput_demo.txt
+Both scripts provide detailed progress tracking.
 
 
 ### Memory Management Features
