@@ -130,10 +130,14 @@ def create_cluster_montage(image_files, cluster_labels, class_name, output_path,
     n_rows = n_clusters
     
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 3, n_rows * 3))
-    
-    # Handle single row case
-    if n_rows == 1:
+
+    # Handle single row or single column cases
+    if n_rows == 1 and n_cols == 1:
+        axes = np.array([[axes]])  # Convert single axis to 2D array
+    elif n_rows == 1:
         axes = axes.reshape(1, -1)
+    elif n_cols == 1:
+        axes = axes.reshape(-1, 1)
     
     for row_idx, cluster_id in enumerate(unique_clusters):
         # Get indices for this cluster
@@ -308,19 +312,14 @@ def analyze_cross_class_separability(X, y, class_names, eps, min_samples, output
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=str, default="cropped_images")
-    parser.add_argument("--eps", type=float, default=0.15,
-                       help="DBSCAN eps for cosine distance (try 0.1-0.3)")
-    parser.add_argument("--min_samples", type=int, default=3,
-                       help="Min samples to form cluster")
-    parser.add_argument("--auto_tune", action="store_true",
-                       help="Automatically find optimal eps for each class")
+    parser.add_argument("--eps", type=float, default=0.15, help="DBSCAN eps for cosine distance (try 0.1-0.3)")
+    parser.add_argument("--min_samples", type=int, default=3, help="Min samples to form cluster")
+    parser.add_argument("--auto_tune", action="store_true", help="Automatically find optimal eps for each class")
     parser.add_argument("--output_dir", type=str, default="clustering_results")
-    parser.add_argument("--max_samples", type=int, default=5,
-                       help="Max sample images per cluster to save")
-    parser.add_argument("--cross_class", action="store_true",
-                       help="Also perform cross-class analysis")
-    parser.add_argument("--save_montage", action="store_true",
-                       help="Create image montage for each class")
+    parser.add_argument("--max_samples", type=int, default=5, help="Max sample images per cluster to save")
+    parser.add_argument("--cross_class", action="store_true", help="Also perform cross-class analysis")
+    parser.add_argument("--save_montage", action="store_true", help="Create image montage for each class")
+    parser.add_argument("--save_suffix", type=str, default="embeddings_dinov2.npy", help="Embedding filename to load (must match script 2 output)")
     args = parser.parse_args()
     
     # Create output directory
@@ -343,18 +342,19 @@ def main():
     for cls_folder in sorted(root.iterdir()):
         if not cls_folder.is_dir():
             continue
-            
-        emb_path = cls_folder / "embeddings_dinov2.npy"
+
+        emb_path = cls_folder / args.save_suffix
         if not emb_path.exists():
-            print(f"\n⚠️  Skipping {cls_folder.name} - no embeddings found.")
+            print(f"\n⚠️  Skipping {cls_folder.name} - no embeddings found ({args.save_suffix}).")
             continue
-        
+
         # Load embeddings
         embeddings = np.load(str(emb_path))
         class_name = cls_folder.name
-        
+
         # Load image mapping file to ensure correct alignment
-        mapping_path = cls_folder / "embeddings_dinov2_image_list.txt"
+        base_name = args.save_suffix.replace('.npy', '')
+        mapping_path = cls_folder / f"{base_name}_image_list.txt"
         if mapping_path.exists():
             # Use the saved mapping (ensures correct alignment even if some images failed)
             with open(mapping_path, 'r') as f:
@@ -368,7 +368,7 @@ def main():
         
         if len(image_files) != len(embeddings):
             print(f"❌ ERROR: {class_name} has {len(image_files)} images but {len(embeddings)} embeddings")
-            print(f"   This class will be skipped. Re-run script 2 to fix alignment.")
+            print(f"   CLASS '{class_name}' SKIPPING! Re-run script 2 to fix alignment.")
             continue
         
         print(f"\nProcessing: {class_name} ({embeddings.shape[0]} samples)")
@@ -391,9 +391,7 @@ def main():
         X_2d = reducer.fit_transform(embeddings)
         
         # Cluster within this class
-        cluster_labels, n_clusters, n_outliers = cluster_single_class(
-            embeddings, class_name, eps_to_use, args.min_samples
-        )
+        cluster_labels, n_clusters, n_outliers = cluster_single_class(embeddings, class_name, eps_to_use, args.min_samples)
         
         # Save statistics
         stats_data.append({
@@ -431,18 +429,27 @@ def main():
         print("\nSummary:")
         print(df.to_string(index=False))
         
-        ## UNCOMMENT IF WANNA SAVE THE CLUSTER STATS
+        ## COMMENT IF WANNA SAVE THE CLUSTER STATS
         stats_path = output_dir / "cluster_statistics.csv"
         df.to_csv(stats_path, index=False)
         print(f"\nSaved statistics: {stats_path}")
     
 
-    # CROSS-CLASS VISUALIZATIONS 
+    # CROSS-CLASS VISUALIZATIONS
     if args.cross_class and all_embeddings:
         X = np.vstack(all_embeddings)
         y = np.array(all_labels)
         cross_path = output_dir / "cross_class_separability.png"
-        analyze_cross_class_separability(X, y, class_names, args.eps, args.min_samples, cross_path)
+
+        # Use median of per-class eps values if auto-tuned, otherwise use args.eps
+        if args.auto_tune and stats_data:
+            eps_values = [stat['eps_used'] for stat in stats_data]
+            cross_class_eps = np.median(eps_values)
+            print(f"\n📊 Cross-class analysis using median eps: {cross_class_eps:.4f} (from {len(eps_values)} classes)")
+        else:
+            cross_class_eps = args.eps
+
+        analyze_cross_class_separability(X, y, class_names, cross_class_eps, args.min_samples, cross_path)
     
     print("\n" + "="*60)
     print("Analysis complete! Check the output directory for:")

@@ -5,7 +5,7 @@ Generates interactive HTML visualizations from existing embeddings.
 Run AFTER Script 2 (embeddings generated). Independent of Script 3.
 
 Usage:
-    python '.\4. interactive_cluster_viewer.py' --root "cropped_imgs_by_class_bmw_7" --output_dir "interactive_clusters_results_bmw_7" --min_samples 3
+    python '.\1. interactive_cluster_viewer.py' --root "cropped_imgs_by_class_bmw_7" --output_dir "interactive_clusters_results_bmw_7" --min_samples 3
 
 Features:
     - Hover over points to see filename
@@ -139,6 +139,7 @@ def main():
         if not cls_folder.is_dir():
             continue
 
+        # PLEASE CHANGE HERE ACC TO EMB PATH
         emb_path = cls_folder / "embeddings_dinov2.npy"
         mapping_path = cls_folder / "embeddings_dinov2_image_list.txt"
 

@@ -58,28 +58,31 @@ def main():
     txt_files = [f for f in os.listdir(dataset_path) if f.endswith(".txt")]
     missing_txts = []
     for img in img_files:
-        txt_exp_file = img[:-3] + "txt"
+        base_name = os.path.splitext(img)[0]
+        txt_exp_file = base_name + ".txt"
         if txt_exp_file not in txt_files:
             missing_txts.append(txt_exp_file)
 
     missing_imgs = []
     for txt in txt_files:
+        if txt == "classes.txt":
+            print("✅  IGNORE CLASSES.TXT!")
+            continue
+
+        base_name = os.path.splitext(txt)[0]
         found = False
-        for ext in ["png", "jpg", "jpeg"]:
-            img_exp_file = txt[:-3] + ext
+        for ext in [".png", ".jpg", ".jpeg"]:
+            img_exp_file = base_name + ext
             if img_exp_file in img_files:
                 found = True
                 break
         if not found:
-            if txt == "classes.txt":
-                print("✅  IGNORE CLASSES.TXT!")
-            else:
-                missing_imgs.append(txt)
+            missing_imgs.append(txt)
 
     if missing_imgs:
         raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES: {missing_imgs}")
     elif missing_txts:
-        print(f"⚠️  NUMBER OF BACKGROUND PNG FILES WITH NO TXT: {len(missing_txts)}\n")
+        print(f"⚠️  NUMBER OF BACKGROUND PNG FILES WITH NO ANNOTATION/TXT FILE: {len(missing_txts)}\n")
     else:
         print(f"✅  ALL PNG FILES HAVE THEIR CORRESPONDING TXT FILES\n")
 
@@ -128,17 +131,15 @@ def main():
     # Report unexpected classes
     if unexpected_classes:
         print(f"\n❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):")
-        print(f"    Expected class IDs: {list(class_map.keys())}")
+        print(f"    Expected class IDs: 0 to {len(class_map) - 1}")
         print(f"    -----------------------------------------------")
         for cls_id, files in unexpected_classes.items():
             count = class_annotation_counts.get(cls_id, 0)
             print(f"    Class ID '{cls_id}': {count} annotations in {len(files)} file(s)")
-            # Show first 5 files as examples
-            for f in files[:5]:
+            # Show all files where invalid annotation
+            for f in files:
                 print(f"        - {f}")
-            if len(files) > 5:
-                print(f"        ... and {len(files) - 5} more files")
-        print(f"\n    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!")
+        raise RuntimeError(f"\n    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!")
     else:
         print(f"✅  All annotations use valid class IDs")
 
@@ -196,12 +197,16 @@ def main():
     crop_counts = {cls: 0 for cls in classes_to_target}
 
     for txt_file in tqdm(txt_files, desc="Processing annotations", unit="file"):
+        if txt_file == "classes.txt":
+            continue
+
         txt_path = os.path.join(dataset_path, txt_file)
-        
+
         # Find corresponding image
+        base_name = os.path.splitext(txt_file)[0]
         img_file = None
-        for ext in ["png", "jpg", "jpeg"]:
-            candidate = txt_file[:-3] + ext
+        for ext in [".png", ".jpg", ".jpeg"]:
+            candidate = base_name + ext
             if candidate in img_files:
                 img_file = candidate
                 break
@@ -271,8 +276,8 @@ def main():
     print("------------------------------------------------------------")
     print(f"Total files processed: {len(txt_files)}")
     print(f"Output directory: {output_base}")
-    print("\nCrops extracted per class:")
-    for class_id in classes_to_target:
+    print("\nSuccessful Crops extracted per class:")
+    for class_id in sorted(crop_counts.keys()):
         class_name = class_map[class_id]
         print(f"  Class {class_id} ({class_name}): {crop_counts[class_id]} crops")
     print("------------------------------------------------------------\n")

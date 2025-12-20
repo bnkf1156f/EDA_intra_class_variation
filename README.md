@@ -20,7 +20,7 @@ Analyzes intra-class variations in object detection datasets through:
 
 Two master scripts are provided to run the complete pipeline automatically with memory management and GPU cooling.
 
-### Script: 4. master_script_pretrain.py
+### Script: 1. master_script_pretrain.py
 **Automated PRE-TRAINING pipeline** - Analyzes annotated dataset before model training
 
 #### Features
@@ -34,7 +34,7 @@ Two master scripts are provided to run the complete pipeline automatically with 
 #### Quick Start
 ```bash
 # Edit global variables in script, then run:
-python "4. master_script_dinov2_pretrain.py"
+python "1. master_script_dinov2_pretrain.py"
 ```
 
 #### Configuration Variables
@@ -69,7 +69,7 @@ max_cluster_samples = "15"
 
 ---
 
-### Script: 4. master_script_dinov2_posttrain.py
+### Script: 1. master_script_dinov2_posttrain.py
 **Automated POST-TRAINING pipeline** - Analyzes trained model detections on a test video
 
 #### Features
@@ -81,7 +81,7 @@ Same as pre-training script, plus:
 #### Quick Start
 ```bash
 # Edit global variables in script, then run:
-python "4. master_script_dinov2_posttrain.py"
+python "1. master_script_dinov2_posttrain.py"
 ```
 
 #### Configuration Variables
@@ -395,7 +395,8 @@ python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images 
 | `--min_samples` | 3 | Min points to form cluster |
 | `--auto_tune` | False | Auto-find optimal eps per class |
 | `--output_dir` | `clustering_results` | Output directory |
-| `--max_samples` | 5 | Sample images per cluster |
+| `--max_samples` | 5 | Sample images per cluster (outliers: all saved) |
+| `--save_suffix` | `embeddings_dinov2.npy` | Embedding filename (must match Script 2 output) |
 | `--cross_class` | False | Cross-class separability analysis |
 | `--save_montage` | False | Create image grid montages |
 
@@ -414,15 +415,16 @@ python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images 
 #### Working Process
 
 1. **Loading Phase**:
-   - Loads embeddings for each class
-   - Loads image mapping file (`embeddings_dinov2_image_list.txt`)
+   - Loads embeddings for each class from `--save_suffix` filename
+   - Dynamically derives mapping filename (e.g., `embeddings_dinov2.npy` → `embeddings_dinov2_image_list.txt`)
    - Falls back to sorted image list if mapping missing (with warning)
-   - Validates data consistency
+   - Validates data consistency (alignment between images and embeddings)
 
 2. **Auto-Tuning (Optional)**:
    - Uses k-Nearest Neighbors for pairwise distances
    - Selects 90th percentile of k-th nearest neighbor distances
    - Provides class-specific optimal eps values
+   - **Cross-class analysis**: Uses median of per-class eps values when auto-tuned
 
 3. **Dimensionality Reduction**:
    - Applies UMAP to reduce 768D → 2D for visualization
@@ -442,7 +444,8 @@ python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images 
    - Optional: Cross-class separability analysis
 
 6. **Sample Extraction**:
-   - Saves sample images organized by cluster
+   - **Regular clusters**: Saves up to `--max_samples` random images per cluster
+   - **Outliers**: Saves ALL outlier images (not sampled) for thorough review
    - Creates montages showing representatives
    - Preserves original filenames for traceability
 
@@ -489,14 +492,14 @@ screw_holder: 7 clusters, 12 outliers (6.0%)   → High diversity
 
 ---
 
-### Script: 4. interactive_cluster_viewer.py (Optional)
+### Script: 1. interactive_cluster_viewer.py (Optional)
 **Interactive HTML visualization using Plotly**
 
 Standalone optional tool for exploring clusters interactively. Run after Script 2 (embeddings). Independent of Script 3.
 
 #### Usage
 ```bash
-python "4. interactive_cluster_viewer.py" --root cropped_imgs_by_class
+python "1. interactive_cluster_viewer.py" --root cropped_imgs_by_class
 ```
 
 #### Parameters
@@ -533,7 +536,7 @@ pip install plotly
 ### Pre-Training Analysis (Automated)
 ```bash
 # Recommended: Use master script
-python "4. master_script_pretrain.py"
+python "1. master_script_pretrain.py"
 
 # Edit these variables in the script before running:
 # - imgs_label_path
@@ -563,7 +566,7 @@ python "scripts/3. clustering_of_classes_embeddings.py" \
 ### Post-Training Analysis (Automated)
 ```bash
 # Recommended: Use master script
-python "4. master_script_dinov2_posttrain.py"
+python "1. master_script_dinov2_posttrain.py"
 
 # Edit these variables in the script before running:
 # - model_path
@@ -590,13 +593,13 @@ python "scripts/1. yolo_model_crop_bbox_per_class.py" \
 
 | Script | Input | Output | Purpose |
 |--------|-------|--------|---------|
-| **4. master_script_dinov2_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** |
-| **4. master_script_dinov2_posttrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** |
+| **1. master_script_dinov2_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** |
+| **1. master_script_dinov2_posttrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** |
 | scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection |
 | scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification |
 | scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations |
 | scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis |
-| 4. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration |
+| 1. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration |
 
 ---
 

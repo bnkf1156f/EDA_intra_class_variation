@@ -3,9 +3,8 @@
 Master script to run entire intra and inter class variation EDA pipeline.
 Includes memory management and cooling breaks for laptop GPUs.
 
-Usage: python "4. master_script.py"
-
-5789 annotated files, 25 classes --> 20 mins approxx
+TIME-TAKEN:
+~ 18 to 20 minutes end-to-end on RTX 4060 laptop GPU for a ~22-minute video (10.8k frames sampled every 3rd frame).
 """
 
 import subprocess
@@ -44,7 +43,7 @@ def cooling_break(seconds):
     print("   This prevents thermal throttling on your laptop GPU")
     
     for remaining in range(seconds, 0, -5):
-        print(f"   ⏳ {remaining} seconds remaining...", end='/r')
+        print(f"   ⏳ {remaining} seconds remaining...", end='\r')
         time.sleep(5)
     
     print("\n   ✅ Cooling break complete\n")
@@ -56,7 +55,7 @@ def check_system_resources():
     if mem.percent > 90:
         print("⚠️  WARNING: RAM usage is very high (>90%)")
         print("   Consider closing other applications")
-        response = input("   Continue anyway? (y\n): ")
+        response = input("   Continue anyway? (y/n): ")
         if response.lower() != 'y':
             sys.exit(1)
     
@@ -96,24 +95,23 @@ def run_step(script, args, cool_down_after=True):
 
 def main():
     ## ---------------------------------##
-    ##  GLOBAL VARIABLES PRE-TRAINING   ##
+    ##         GLOBAL VARIABLES         ##
     ## ---------------------------------##
-    imgs_label_path = r"D:\path\to\your\labelled_frames"
-    class_names = [
-        "class_0",
-        "class_1",
-        "class_2",
-    ]
+    model_path = r"C:/VkRetro/CarrierInspectionVids/blower_shelf_inspection_new_classes_v8_L_5.pt"
+    video_path = r"C:/VkRetro/CarrierInspectionVids/custom made/till 20 oct.mp4"
+    classes_space_separated = ["board", "screw", "screw_holder"]
+    per_class_num_frames = 1000
+    conf_thresh = 0.4
+    frame_stride_per_video = 3
+    cropped_bbox_dir = "cropped_images"
 
-    cropped_bbox_dir = "cropped_imgs_by_class"
-
-    batch_size = "32"
+    batch_size = 32
     save_suffix = "embeddings_dinov2.npy"
 
-    epsilon = "0.15" # Only imp when auto-tune is NOT selected during clustering
-    min_pts = "3"
-    output_cluster_dir = "clustering_results_txt_files_dinov2"
-    max_cluster_samples = "20"
+    epsilon = 0.15
+    min_pts = 3
+    output_cluster_dir = "clustering_results"
+    max_cluster_samples = 5
     
 
     # GPU specs print
@@ -130,24 +128,28 @@ def main():
     
     print("="*60)
 
-    # Classes to ids and etc
-    class_ids = [str(i) for i in range(len(class_names))]
-    class_ids_to_names = []
-    for i, name in enumerate(class_names):
-        class_ids_to_names.extend([str(i), name])
+    # Confirm before starting
+    print("\nPipeline Configuration:")
+    print(f"  Video: {os.path.basename(video_path)} (22 mins)")
+    print(f"  Classes: {', '.join(classes_space_separated)}")
+    print(f"  Frames per class: {per_class_num_frames}")
+    print(f"  Total estimated frames: {int(per_class_num_frames) * len(classes_space_separated)}")
 
 
     # Step 1: Crop YOLO bboxes
     print("\n" + "="*60)
-    print("STEP 1/3: EXTRACTING BOUNDING BOXES FROM LABELLED DATA")
+    print("STEP 1/3: EXTRACTING BOUNDING BOXES FROM VIDEO")
     print("⚠️  This step is time-consuming")
     print("="*60)
-    run_step("scripts/1. ann_txt_files_crop_bbox.py", [
-        "--imgs_label_path", imgs_label_path,
-        "--classes"] + class_ids + [  # Unpack list
-        "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
-        "--output_dir", cropped_bbox_dir
-    ])
+    run_step("scripts/1. yolo_model_crop_bbox_per_class.py", [
+        "--model", model_path,
+        "--video", video_path,
+        "--classes"] + classes_space_separated + [
+        "--num_frames", str(per_class_num_frames),
+        "--output", cropped_bbox_dir,
+        "--conf_thresh", str(conf_thresh),
+        "--frame_stride", str(frame_stride_per_video)
+    ], cool_down_after=True)
 
     
     # Step 2: Embed the cropped YOLO bbox
@@ -155,10 +157,11 @@ def main():
     print("STEP 2/3: GENERATING DINOV2 EMBEDDINGS")
     print("="*60)
     print("⚠️  This step is GPU-intensive")
+    print(f"   Processing ~{int(per_class_num_frames) * len(classes_space_separated)} images")
     
     run_step("scripts/2. save_dinov2_embeddings_per_class.py", [
         "--root", cropped_bbox_dir,
-        "--batch", batch_size,
+        "--batch", str(batch_size),
         "--save_suffix", save_suffix
     ], cool_down_after=True)
 
@@ -169,10 +172,11 @@ def main():
     print("="*60)
     run_step("scripts/3. clustering_of_classes_embeddings.py", [
         "--root", cropped_bbox_dir,
-        "--eps", epsilon,
-        "--min_samples", min_pts,
+        "--eps", str(epsilon),
+        "--min_samples", str(min_pts),
         "--output_dir", output_cluster_dir,
-        "--max_samples", max_cluster_samples,
+        "--max_samples", str(max_cluster_samples),
+        "--save_suffix", save_suffix,
         "--auto_tune",
         "--save_montage",
         "--cross_class"

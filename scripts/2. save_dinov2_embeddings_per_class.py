@@ -56,11 +56,7 @@ def compute_embeddings_for_paths(paths, processor, model, device, batch_size):
     
     with torch.no_grad():
         # Add progress bar for batches
-        progress_bar = tqdm(
-            range(0, len(paths), batch_size),
-            desc="Computing embeddings",
-            unit="batch"
-        )
+        progress_bar = tqdm(range(0, len(paths), batch_size), desc="Computing embeddings", unit="batch")
         
         for i in progress_bar:
             # Clear GPU cache if memory is getting full
