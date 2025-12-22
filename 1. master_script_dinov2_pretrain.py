@@ -1,9 +1,8 @@
-# run_pipeline.py
 """
 Master script to run entire intra and inter class variation EDA pipeline.
 Includes memory management and cooling breaks for laptop GPUs.
 
-5789 annotated files, 25 classes --> 20 mins approxx
+(with PDF) 34 classes, 5789 annotations: 15-16 mins (2 mins by pdf)
 """
 
 import subprocess
@@ -138,7 +137,7 @@ def main():
 
     cropped_bbox_dir = "cropped_imgs_by_class_bmw_7"
 
-    batch_size = 32
+    batch_size = 64
     save_suffix = "embeddings_dinov2.npy"
 
     epsilon = 0.15  # Only imp when auto-tune is NOT selected during clustering
@@ -146,7 +145,9 @@ def main():
     output_cluster_dir = "clustering_results_txt_files_dinov2_bmw_7"
     max_cluster_samples = 20
 
+    temp_file = "temp_ann_file.txt"
     pdf_generate = True
+    pdf_name = "PDF_REPORT_BMW_7.0"
     
 
     # GPU specs print
@@ -170,22 +171,32 @@ def main():
         class_ids_to_names.extend([str(i), name])
 
 
-    # Step 1: Crop YOLO bboxes
+    # Step 1: Crop YOLO bboxes -- Only send temp txt file if requested for PDF Generation
     print("\n" + "="*60)
-    print("STEP 1/3: EXTRACTING BOUNDING BOXES FROM LABELLED DATA")
+    total_steps = 4 if pdf_generate else 3
+    print(f"STEP 1/{total_steps}: EXTRACTING BOUNDING BOXES FROM LABELLED DATA")
     print("⚠️  This step is time-consuming")
     print("="*60)
-    run_step("scripts/1. ann_txt_files_crop_bbox.py", [
-        "--imgs_label_path", imgs_label_path,
-        "--classes"] + class_ids + [  # Unpack list
-        "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
-        "--output_dir", cropped_bbox_dir
-    ])
+    if pdf_generate:
+        run_step("scripts/1. ann_txt_files_crop_bbox.py", [
+            "--imgs_label_path", imgs_label_path,
+            "--classes"] + class_ids + [  # Unpack list
+            "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
+            "--output_dir", cropped_bbox_dir,
+            "--output_txt_file", temp_file
+        ])
+    else:
+        run_step("scripts/1. ann_txt_files_crop_bbox.py", [
+            "--imgs_label_path", imgs_label_path,
+            "--classes"] + class_ids + [  # Unpack list
+            "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
+            "--output_dir", cropped_bbox_dir
+        ])
 
-    
+
     # Step 2: Embed the cropped YOLO bbox
     print("\n" + "="*60)
-    print("STEP 2/3: GENERATING DINOV2 EMBEDDINGS")
+    print(f"STEP 2/{total_steps}: GENERATING DINOV2 EMBEDDINGS")
     print("="*60)
     print("⚠️  This step is GPU-intensive")
     
@@ -195,10 +206,10 @@ def main():
         "--save_suffix", save_suffix
     ], cool_down_after=True)
 
-    
+
     # Step 3: Cluster using DBSCAN to visualize
     print("\n" + "="*60)
-    print("STEP 3/3: CLUSTERING ANALYSIS")
+    print(f"STEP 3/{total_steps}: CLUSTERING ANALYSIS")
     print("="*60)
     run_step("scripts/3. clustering_of_classes_embeddings.py", [
         "--root", cropped_bbox_dir,
@@ -212,9 +223,38 @@ def main():
         "--cross_class"
     ], cool_down_after=False)  # No cooling needed after last step
 
+    # Step 4 (Optional): Generate PDF Report
+    if pdf_generate:
+        print("\n" + "="*60)
+        print("STEP 4/4: GENERATING PDF REPORT")
+        print("="*60)
+        run_step("scripts/4. generate_pdf.py", [
+            "--temp_txt_file", temp_file,
+            "--clustering_dir", output_cluster_dir,
+            "--pdf_name", pdf_name
+        ], cool_down_after=False)
+
+        # Ask user whether to delete temp file
+        print("\n" + "="*60)
+        print(f"📄 PDF Report generated: {pdf_name}.pdf")
+        print(f"📁 Temporary annotation file: {temp_file}")
+        print("="*60)
+        response = input("\n🗑️  Delete temporary annotation file? (y/n): ")
+        if response.lower() == 'y':
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                    print(f"   ✅ Deleted: {temp_file}")
+                else:
+                    print(f"   ⚠️  File not found: {temp_file}")
+            except Exception as e:
+                print(f"   ❌ Error deleting file: {e}")
+        else:
+            print(f"   📌 Keeping: {temp_file}")
+
     # Final cleanup
     clear_memory()
-    
+
     print("\n" + "="*60)
     print("✅ PIPELINE COMPLETE!")
     print("="*60)

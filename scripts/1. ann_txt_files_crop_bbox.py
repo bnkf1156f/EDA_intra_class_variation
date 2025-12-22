@@ -16,6 +16,7 @@ This script:
  - Converts YOLO normalized coordinates to pixel bounding boxes
  - Crops and saves bounding boxes into per-class folders
  - Prints a summary of all crops extracted per class
+ - Save important info in temporary txt file if argument sent
 
 python '.\1. ann_txt_files_crop_bbox.py' --imgs_label_path "C:/VkRetro/YoloDetectExtractFrames/EDA_intra_class_variation_scripts/CarrierInspectionLabelledData" --classes 0 1 2 3 4 --class_ids_to_names 0 board 1 screw 2 screw_holder 3 tape 4 case
 """
@@ -45,6 +46,7 @@ def main():
     p.add_argument("--classes", nargs="+", required=True, help="Class IDs required")
     p.add_argument("--class_ids_to_names", nargs="+", required=True, help="Pairs of class_id class_name (e.g. 0 board 1 screw 2 screw_holder)")
     p.add_argument("--output_dir", default="cropped_imgs_by_class", help="Output Directory to store cropped images")
+    p.add_argument("--output_txt_file", help="Temporary TXT file to store details for PDF generation at the end")
     args = p.parse_args()
 
     dataset_path = args.imgs_label_path
@@ -96,9 +98,13 @@ def main():
     print("|                 VALIDATING ANNOTATIONS                   |")
     print("------------------------------------------------------------")
 
+    # Statistics tracking variables (used in both validation and processing)
     unexpected_classes = {}  # {class_id: [list of files]}
     class_annotation_counts = {}  # {class_id: count} for ALL classes found
-    empty_annotation_files = []
+    empty_annotation_files = []  # Files with no annotations
+    invalid_annotation_files = []  # Files with malformed annotations (< 5 parts or ValueError)
+    error_reading_files = []  # Files that couldn't be read by cv2.imread
+    empty_crop_files = []  # Annotations that produced zero-size crops
 
     for txt_file in txt_files:
         if txt_file == "classes.txt":
@@ -115,6 +121,8 @@ def main():
             parts = line.strip().split()
             if len(parts) < 5:
                 print(f"⚠️  Invalid Annotation File: {txt_file}")
+                if txt_file not in invalid_annotation_files:
+                    invalid_annotation_files.append(txt_file)
                 continue
             class_id = parts[0]
 
@@ -192,7 +200,7 @@ def main():
     print("\n------------------------------------------------------------")
     print("|                  PROCESSING ANNOTATIONS                  |")
     print("------------------------------------------------------------")
-    
+
     ## WALK THROUGH WHOLE DATASET
     crop_counts = {cls: 0 for cls in classes_to_target}
 
@@ -216,9 +224,10 @@ def main():
         
         img_path = os.path.join(dataset_path, img_file)
         img = cv2.imread(img_path)
-        
+
         if img is None:
-            print(f"⚠️  Could not read image: {img_file}")
+            print(f"\n⚠️  Could not read image: {img_file}")
+            error_reading_files.append(img_file)
             continue
         
         img_height, img_width = img.shape[:2]
@@ -230,6 +239,8 @@ def main():
         for idx, line in enumerate(lines):
             parts = line.strip().split()
             if len(parts) < 5:
+                if txt_file not in invalid_annotation_files:
+                    invalid_annotation_files.append(txt_file)
                 continue
             
             class_id = parts[0]
@@ -243,6 +254,8 @@ def main():
                 height = float(parts[4])
             except ValueError:
                 print(f"⚠️  Invalid annotation in {txt_file}: {line.strip()}")
+                if txt_file not in invalid_annotation_files:
+                    invalid_annotation_files.append(txt_file)
                 continue
             
             # Convert to pixel coordinates
@@ -256,9 +269,10 @@ def main():
             
             # Crop the image
             cropped = img[y1:y2, x1:x2]
-            
+
             if cropped.size == 0:
-                print(f"⚠️  Empty crop from {img_file} for class {class_id}")
+                print(f"\n⚠️  Empty crop from {img_file} for class {class_id}")
+                empty_crop_files.append(f"{img_file} (class {class_id})")
                 continue
             
             # Save cropped image
@@ -281,6 +295,125 @@ def main():
         class_name = class_map[class_id]
         print(f"  Class {class_id} ({class_name}): {crop_counts[class_id]} crops")
     print("------------------------------------------------------------\n")
+
+    # =========================================================================
+    # WRITE TEMPORARY FILE FOR PDF GENERATION (if requested)
+    # =========================================================================
+    if args.output_txt_file:
+        print(f"📝 Writing statistics to temporary file: {args.output_txt_file}")
+
+        with open(args.output_txt_file, 'w', encoding='utf-8') as f:
+            f.write("="*70 + "\n")
+            f.write("SCRIPT 1: ANNOTATION BBOX CROPPING - STATISTICS\n")
+            f.write("="*70 + "\n\n")
+
+            # Dataset overview
+            f.write("DATASET OVERVIEW:\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Total image files found: {len(img_files)}\n")
+            f.write(f"Total annotation files found: {len([t for t in txt_files if t != 'classes.txt'])}\n")
+
+            # Missing annotations (background images)
+            f.write("\nPNG FILES WITH NO TXT ANNOTATIONS (Background Images) =>\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(missing_txts)}\n")
+            if missing_txts:
+                f.write("Files:\n")
+                for txt in missing_txts[:10]:  # Show first 10
+                    f.write(f"  - {txt}\n")
+                if len(missing_txts) > 10:
+                    f.write(f"  ... and {len(missing_txts) - 10} more\n")
+            f.write("\n")
+
+            # Empty annotation files
+            f.write("EMPTY ANNOTATION FILES (No Objects Labelled):\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(empty_annotation_files)}\n")
+            if empty_annotation_files:
+                f.write("Files:\n")
+                for file in empty_annotation_files[:10]:
+                    f.write(f"  - {file}\n")
+                if len(empty_annotation_files) > 10:
+                    f.write(f"  ... and {len(empty_annotation_files) - 10} more\n")
+            f.write("\n")
+
+            # Invalid annotation files
+            f.write("INVALID ANNOTATION FILES (Malformed Data):\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(invalid_annotation_files)}\n")
+            if invalid_annotation_files:
+                f.write("Files:\n")
+                for file in invalid_annotation_files:
+                    f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # Errors while reading files
+            f.write("ERRORS WHILE READING FILES:\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(error_reading_files)}\n")
+            if error_reading_files:
+                f.write("Files:\n")
+                for file in error_reading_files:
+                    f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # Empty crop files
+            f.write("EMPTY CROP FILES (Zero-size Crops):\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(empty_crop_files)}\n")
+            if empty_crop_files:
+                f.write("Files:\n")
+                for file in empty_crop_files:
+                    f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # Class distribution & successful crops
+            f.write("CLASS DISTRIBUTION & SUCCESSFUL CROPS:\n")
+            f.write("-"*70 + "\n")
+            total_annotations = sum(class_annotation_counts.values())
+            total_crops = sum(crop_counts.values())
+            f.write(f"Total annotations in dataset: {total_annotations}\n")
+            f.write(f"Total crops successfully extracted: {total_crops}\n\n")
+
+            for cls_id in sorted(class_annotation_counts.keys(), key=lambda x: int(x) if x.isdigit() else float('inf')):
+                count = class_annotation_counts[cls_id]
+                percentage = (count / total_annotations * 100) if total_annotations > 0 else 0
+                name = class_map.get(cls_id, "UNKNOWN")
+                crops = crop_counts.get(cls_id, 0)
+                f.write(f"  Class {cls_id} ({name}): {count} annotations → {crops} crops ({percentage:.1f}%)\n")
+            f.write("\n")
+
+            # Class imbalance
+            f.write("CLASS IMBALANCE ANALYSIS:\n")
+            f.write("-"*70 + "\n")
+            if class_annotation_counts:
+                expected_ids = set(class_map.keys())
+                counts = [class_annotation_counts.get(c, 0) for c in expected_ids]
+                counts = [c for c in counts if c > 0]
+                if counts and len(counts) > 1:
+                    max_count = max(counts)
+                    min_count = min(counts)
+                    ratio = max_count / min_count if min_count > 0 else float('inf')
+                    f.write(f"Max class count: {max_count}\n")
+                    f.write(f"Min class count: {min_count}\n")
+                    f.write(f"Imbalance ratio: {ratio:.1f}x\n")
+                    if ratio > 10:
+                        f.write("⚠️  WARNING: Severe class imbalance detected (>10x)\n")
+                    elif ratio > 5:
+                        f.write("⚠️  WARNING: Moderate class imbalance detected (>5x)\n")
+                    else:
+                        f.write("✅ Class distribution is relatively balanced\n")
+                else:
+                    f.write("N/A (insufficient data)\n")
+            else:
+                f.write("N/A (no annotations found)\n")
+            f.write("\n")
+
+            f.write("="*70 + "\n")
+            f.write("END OF SCRIPT 1 STATISTICS\n")
+            f.write("="*70 + "\n")
+
+        print(f"✅ Statistics written successfully to {args.output_txt_file}\n")
 
 if __name__ == "__main__":
     main()

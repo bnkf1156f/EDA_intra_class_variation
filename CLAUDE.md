@@ -23,6 +23,7 @@ This is an **intra-class variation analysis pipeline** for object detection data
 | `scripts/1. yolo_model_crop_bbox_per_class.py` | Post-training: Extract crops from model detections |
 | `scripts/2. save_dinov2_embeddings_per_class.py` | Generate DINOv2 embeddings |
 | `scripts/3. clustering_of_classes_embeddings.py` | DBSCAN clustering analysis |
+| `scripts/4. generate_pdf.py` | Generate PDF reports combining dataset stats + clustering results |
 | `1. interactive_cluster_viewer.py` | Optional: Interactive Plotly HTML viewer |
 | `1. master_script_dinov2_pretrain.py` | Automated pre-training pipeline |
 | `1. master_script_dinov2_posttrain.py` | Automated post-training pipeline |
@@ -63,6 +64,7 @@ Input (annotated images OR video+model)
     |
     v
 [Script 1] Crop bounding boxes per class --> cropped_imgs/<class>/*.png
+                                             temp_ann_file.txt (statistics)
     |
     v
 [Script 2] DINOv2 embeddings --> cropped_imgs/<class>/embeddings_dinov2.npy
@@ -70,11 +72,13 @@ Input (annotated images OR video+model)
     |
     v
 [Script 3] DBSCAN clustering --> clustering_results/<class>_clusters.png
+                                 clustering_results/<class>_montage.png
                                  clustering_results/<class>_samples/cluster_N/
                                  clustering_results/cluster_statistics.csv
     |
     v (optional)
-[Script 4] Interactive viewer --> clustering_results/<class>_interactive.html
+[Script 4] PDF report generator --> output.pdf (combines Script 1 + 3 results)
+[Script 5] Interactive viewer --> clustering_results/<class>_interactive.html
 ```
 
 ### Key Data Structures
@@ -83,12 +87,15 @@ Input (annotated images OR video+model)
 - **YOLO format**: `class_id x_center y_center width height` (normalized coordinates)
 
 ### Script Interdependencies
-- Script 1a/1b → Creates class folders with cropped images
+- Script 1a/1b → Creates class folders with cropped images + `temp_ann_file.txt` statistics
 - Script 2 → Reads class folders, creates `.npy` + `_image_list.txt`
-- Script 3 → Reads embeddings + mapping file, creates visualizations
-- Script 4 → (Optional) Reads embeddings, creates interactive HTML (independent of Script 3)
+- Script 3 → Reads embeddings + mapping file, creates visualizations + `cluster_statistics.csv`
+- Script 4 → Reads `temp_ann_file.txt` (Script 1) + clustering results (Script 3), generates PDF
+- Script 5 → (Optional) Reads embeddings, creates interactive HTML (independent of Scripts 3 & 4)
 
-**Critical**: If Script 2 changes output format, Script 3 must be updated to match!
+**Critical**:
+- If Script 2 changes output format, Script 3 must be updated to match!
+- Script 4 depends on Script 1's txt output and Script 3's montage PNG files
 
 ### Master Script Features
 - Memory management: GPU cache clearing, garbage collection between steps
@@ -116,13 +123,18 @@ Input (annotated images OR video+model)
 3. **CSV Saving**: Script 3 has CSV saving enabled (not commented out)
 4. **Cross-Class Epsilon**: When `--auto_tune` is enabled with `--cross_class`, Script 3 uses the median of per-class eps values for cross-class DBSCAN clustering
 5. **Outlier Sampling**: Script 3 saves ALL outlier images (not sampled), while regular clusters are sampled up to `--max_samples`
+6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine number of rows
+7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 90 for ~80% file size reduction
+8. **PIL Decompression Bomb**: Script 4 disables PIL's `MAX_IMAGE_PIXELS` limit to handle large montages (25+ clusters)
 
 ## File Naming Patterns
-- Script 1a outputs: `{basename}_crop_{idx}.png`
+- Script 1a outputs: `{basename}_crop_{idx}.png` + `temp_ann_file.txt`
 - Script 1b outputs: `frame_{frame_idx:06d}.png`
 - Script 2 outputs: `{save_suffix}.npy` + `{save_suffix_without_.npy}_image_list.txt`
   - Default: `embeddings_dinov2.npy` + `embeddings_dinov2_image_list.txt`
   - Custom: `custom_emb.npy` + `custom_emb_image_list.txt`
+- Script 3 outputs: `{class}_clusters.png`, `{class}_montage.png`, `cluster_statistics.csv`
+- Script 4 outputs: `{pdf_name}.pdf` + temp JPEG chunks (auto-cleaned)
 
 ## Dependencies
 
@@ -132,6 +144,7 @@ Input (annotated images OR video+model)
 - scikit-learn (DBSCAN)
 - umap-learn
 - opencv-python, pillow, numpy, pandas, matplotlib, seaborn, psutil, tqdm
+- reportlab (for PDF generation in Script 4)
 
 ---
 

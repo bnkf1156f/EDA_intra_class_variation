@@ -45,11 +45,16 @@ Edit these at the top of `main()` function:
 imgs_label_path = "path/to/LabelledData"
 class_names = ["class1", "class2", "class3"]
 cropped_bbox_dir = "cropped_imgs_by_class"
-batch_size = "32"
+batch_size = "64"
 epsilon = "0.15"  # Ignored if auto_tune is used
 min_pts = "3"
 output_cluster_dir = "clustering_results"
-max_cluster_samples = "15"
+max_cluster_samples = "20"
+
+# PDF Generation (optional)
+temp_file = "temp_ann_file.txt"
+pdf_generate = True  # Set to False to skip PDF generation
+pdf_name = "PDF_REPORT"
 ```
 
 #### Pipeline Steps
@@ -57,6 +62,7 @@ max_cluster_samples = "15"
    - Extracts bounding boxes from annotated images
    - Validates dataset integrity
    - Organizes crops by class
+   - Saves statistics to temp txt file
 
 2. **Embedding Generation** (`scripts/2. save_dinov2_embeddings_per_class.py`)
    - Generates 768D DINOv2 embeddings
@@ -65,7 +71,12 @@ max_cluster_samples = "15"
 3. **Clustering Analysis** (`scripts/3. clustering_of_classes_embeddings.py`)
    - Auto-tunes DBSCAN epsilon per class if selected
    - Generates visualizations and montages
-   - Cross-class separability analysis if selected 
+   - Cross-class separability analysis if selected
+
+4. **PDF Report Generation** (Optional - `scripts/4. generate_pdf.py`)
+   - Combines dataset statistics and clustering visualizations
+   - Creates professional multi-page PDF report
+   - Only runs if `pdf_generate = True` 
 
 ---
 
@@ -192,6 +203,7 @@ python "scripts/1. ann_txt_files_crop_bbox.py" \
 | `--classes` | Space-separated class IDs to extract |
 | `--class_ids_to_names` | ID-name mapping: `id1 name1 id2 name2 ...` |
 | `--output_dir` | Output directory (default: `cropped_imgs_by_class`) |
+| `--output_txt_file` | Optional: Path to save statistics txt file for PDF generation |
 
 #### What It Does
 1. Validates dataset (checks image-label pairing)
@@ -492,6 +504,85 @@ screw_holder: 7 clusters, 12 outliers (6.0%)   → High diversity
 
 ---
 
+### Script: scripts/4. generate_pdf.py
+**Generate comprehensive PDF reports combining dataset statistics and clustering visualizations**
+
+Creates a multi-page PDF report that combines Script 1 dataset quality statistics with Script 3 clustering montages for professional presentation and documentation.
+
+#### Usage
+```bash
+python "scripts/4. generate_pdf.py" \
+    --temp_txt_file temp_ann_file.txt \
+    --clustering_dir clustering_results \
+    --pdf_name "REPORT_BMW_7.0"
+```
+
+#### Parameters
+| Parameter | Description |
+|-----------|-------------|
+| `--temp_txt_file` | Path to Script 1's temporary statistics txt file |
+| `--clustering_dir` | Path to Script 3's clustering output directory |
+| `--pdf_name` | Output PDF filename (without .pdf extension) |
+
+#### What It Does
+1. **Parses Script 1 statistics**: Dataset quality, class distribution, imbalance warnings
+2. **Loads Script 3 cluster data**: Reads `cluster_statistics.csv` for per-class metrics
+3. **Generates visualizations**: Bar charts for class distribution and imbalance ratios
+4. **Combines montages**: Embeds clustering montages for each class
+5. **Smart image handling**:
+   - Compresses images to JPEG quality 90 for smaller file sizes
+   - Splits tall montages at cluster row boundaries (no clusters cut in half)
+   - Adds continuation labels when montages span multiple pages
+6. **Creates PDF**: Professional multi-page report with proper formatting
+
+#### Features
+- **Automatic image compression**: Reduces PDF size by ~80% using JPEG quality 90
+- **Intelligent splitting**: Montages split at cluster boundaries, never mid-cluster
+- **Page-aware layout**: Fits multiple cluster rows per page, adds continuation labels
+- **Error handling**: Creates placeholder images for missing montages
+- **PIL decompression bomb protection disabled**: Handles large montages (25+ clusters)
+
+#### Output Structure
+```
+Page 1: Dataset Quality Report
+  - Dataset overview statistics
+  - Class distribution bar chart
+  - Class imbalance analysis chart
+
+Pages 2-N: Per-Class Clustering Montages
+  - Class title
+  - Montage image (possibly split across pages)
+  - Continuation labels (e.g., "Continuation - Clusters 3 to 5")
+  - Statistics: Samples | Clusters | Outliers | Epsilon
+```
+
+#### Technical Details
+- **Image format**: Converts PNG montages → JPEG quality 90 (80-90% smaller)
+- **Split logic**: Calculates cluster rows from `cluster_statistics.csv`, fits whole rows per page
+- **Max page height**: 8.5 inches for montage content
+- **Max page width**: 7 inches for images
+- **Temporary files**: Auto-cleaned after PDF generation
+
+#### Example Output
+For a class with 25 clusters:
+- **Page 1**: Title + Clusters 0-2 (3 rows fit)
+- **Page 2**: "(Continuation - Clusters 3 to 5)" + Clusters 3-5
+- **Page 3**: "(Continuation - Clusters 6 to 8)" + Clusters 6-8
+- ... (continues until all clusters shown)
+- **Final page**: Last clusters + outliers + statistics caption
+
+#### Common Issues
+- **"Error loading montage image"**: Image too large - now fixed with PIL limits disabled
+- **PDF too large (>500KB)**: Already optimized with JPEG compression at quality 90
+- **Missing montages**: Ensure Script 3 was run with `--save_montage` flag
+
+#### Requirements
+```bash
+pip install reportlab pillow matplotlib pandas
+```
+
+---
+
 ### Script: 1. interactive_cluster_viewer.py (Optional)
 **Interactive HTML visualization using Plotly**
 
@@ -599,6 +690,7 @@ python "scripts/1. yolo_model_crop_bbox_per_class.py" \
 | scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification |
 | scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations |
 | scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis |
+| scripts/4. generate_pdf.py | Script 1 stats + Script 3 results | PDF report | Professional documentation |
 | 1. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration |
 
 ---

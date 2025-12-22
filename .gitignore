@@ -2,4 +2,5 @@ clustering*/
 cropped*/
 interactive*/
 embeddings_test.py
-terminal_output_demo.txt
+temp_ann_file.txt
+*.pdf

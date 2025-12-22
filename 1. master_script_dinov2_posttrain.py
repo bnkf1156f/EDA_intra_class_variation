@@ -1,4 +1,3 @@
-# run_pipeline.py
 """
 Master script to run entire intra and inter class variation EDA pipeline.
 Includes memory management and cooling breaks for laptop GPUs.
