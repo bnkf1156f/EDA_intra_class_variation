@@ -17,6 +17,8 @@ Usage:
     python '.\EDA_intra_class_variation_scripts\3. clustering_of_classes_embeddings.py' --auto_tune --cross_class --save_montage
 """
 
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to avoid tkinter threading issues
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import normalize

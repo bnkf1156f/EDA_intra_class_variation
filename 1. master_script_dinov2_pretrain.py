@@ -95,59 +95,28 @@ def main():
     ## ---------------------------------##
     ##  GLOBAL VARIABLES PRE-TRAINING   ##
     ## ---------------------------------##
-    imgs_label_path = r"D:\VkRetro\BmwWork\test op 7.0\Labelled BMW 7.0 frames"
+    imgs_label_path = r"LabelledDataPath"
     class_names = [
-        "person",
-        "hands",
-        "black_region", 
-        "other_car_base",
-        "electric_car_base",
-        "black_sheet",
-        "half_silver_sheet",
-        "full_silver_sheet",
-        "hands_w_torque_gun",
-        "grey_clamp_R",
-        "coolant_line",
-        "rubber_band",
-        "green_line",
-        "clipping_pose",
-        "I20_car_base",
-        "yellow_part_I20",
-        "connector_box_I20",
-        "cable_I20",
-        "hand_w_torque_driver_I20",
-        "round_wire_I20",
-        "vent_I20",
-        "triangle_frame_I20",
-        "torque_tool_placed_back",
-        "hand_w_torque_tool_back",
-        "installed_coolant_line",
-        "crossbeam_bolt_R",
-        "cable_clipped_I20_R",
-        "air_line_clip_top_g60_bev",
-        "air_line_clip_middle_g60_bev",
-        "air_line_clip_on_bump_g60_bev",
-        "air_line_clips_bottom_g60_bev",
-        "air_duct_holder_g70_bev",
-        "attached_black_wire_g70_ip",
-        "black_base_part_electric",
-        "pair_black_clips_I20",
-        "g70_ip_clips",
+        "board",
+        "screw",
+        "screw_holder",
+        "tape",
+        "case",
     ]
 
-    cropped_bbox_dir = "cropped_imgs_by_class_bmw_7"
+    cropped_bbox_dir = "cropped_imgs_by_class"
 
     batch_size = 64
     save_suffix = "embeddings_dinov2.npy"
 
     epsilon = 0.15  # Only imp when auto-tune is NOT selected during clustering
     min_pts = 3
-    output_cluster_dir = "clustering_results_txt_files_dinov2_bmw_7"
+    output_cluster_dir = "clustering_results_txt_files"
     max_cluster_samples = 20
 
     temp_file = "temp_ann_file.txt"
     pdf_generate = True
-    pdf_name = "PDF_REPORT_BMW_7.0"
+    pdf_name = "PDF_REPORT"
     
 
     # GPU specs print
