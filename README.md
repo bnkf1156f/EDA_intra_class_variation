@@ -1,13 +1,31 @@
 # EDA INTRA-CLASS VARIATION Scripts Documentation
 
-## Pipeline Overview --- PRE-TRAINING
+🔒 **Data Privacy**: All processing is 100% local - your proprietary frames, annotations, and models never leave your machine. No API calls, no telemetry, fully air-gappable after initial model downloads.
 
-Analyzes intra-class variations in object detection datasets through:
-1. **Cropped Images Extraction**: From annotated images (pre-training)
+---
+
+## Pipeline Overview --- PRE-ANNOTATION (Frame Quality Assessment)
+
+**NEW**: Analyze frame quality **BEFORE sending to annotators** to ensure annotation effort is worthwhile.
+
+1. **Scan Frames**: Load raw frame images (no annotations needed)
+2. **DINOv2 Embeddings**: Generate semantic representations
+3. **Activity Clustering**: Discover different scenarios/activities in frames
+4. **Quality Metrics**: Analyze brightness, contrast, motion blur
+5. **PDF Report**: Generate comprehensive quality assessment with visual montages
+
+**Purpose**: Validate that extracted frames are diverse and high-quality before wasting annotation time on redundant or blurry frames.
+
+---
+
+## Pipeline Overview --- PRE-TRAINING (After Annotation)
+
+Analyzes intra-class variations in annotated object detection datasets through:
+1. **Cropped Images Extraction**: From annotated images (after annotation is complete)
 2. **Embedding Generation using DINOv2**: Using DINOv2 to create 768D semantic representations
 3. **Clustering Analysis**: DBSCAN to discover sub-groups and outliers within each class
 
-## Pipeline Overview --- POST-TRAINING
+## Pipeline Overview --- POST-TRAINING (After Model Training)
 1. **Cropped Images Extraction**: Using YOLOv8 trained model, extract smart class frames and crop accordingly
 2. **Embedding Generation using DINOv2**: Using DINOv2 to create 768D semantic representations
 3. **Clustering Analysis**: DBSCAN to discover sub-groups and outliers within each class
@@ -18,7 +36,169 @@ Analyzes intra-class variations in object detection datasets through:
 
 ## 🚀 Master Scripts (Automated Pipeline)
 
-Two master scripts are provided to run the complete pipeline automatically with memory management and GPU cooling.
+Three master scripts are provided: one for **pre-annotation** frame quality assessment, and two for **post-annotation** intra-class variation analysis.
+
+---
+
+### Script: 1. master_script_dinov2_PreAnnotate.py
+**PRE-ANNOTATION Frame Quality Assessment** - Validate frames BEFORE sending to annotators
+
+#### Purpose
+Helps engineers assess whether extracted frames are worthy of annotation effort by analyzing:
+- **Lighting diversity** (dark/medium/bright distribution)
+- **Motion blur detection** (identify frames with camera shake or motion blur)
+- **Activity/scenario diversity** (detect different work scenarios, object positions, camera angles)
+- **Coverage gaps** (missing scenarios, imbalanced lighting)
+
+**Use this when**: You have extracted frames or have images, and want to validate quality/diversity BEFORE annotation.
+
+#### Features
+- 🎯 **Activity Clustering**: Automatically groups frames by semantic similarity (different scenarios)
+- 📊 **Quality Metrics**: Brightness, contrast, motion blur analysis
+- 🖼️ **Visual Montages**: See sample images per activity cluster in PDF
+- 🧠 **Adaptive Embeddings**: Uses pose features when persons detected, scene-only otherwise
+- 📄 **PDF Report**: n-page comprehensive quality assessment
+- ⚠️ **Drop Recommendations**: Which frames to remove before annotation
+
+#### Quick Start
+```bash
+# Edit global variables in script, then run:
+python "1. master_script_dinov2_PreAnnotate.py"
+```
+
+#### Configuration Variables
+Edit these at the top of `main()` function:
+
+```python
+frames_dir = r"D:\Your\Frames\Folder"  # Root directory with extracted frames
+batch_size = 64  # DINOv2 batch size
+anisotropy_threshold = 3.6  # Motion blur detection threshold (gradient anisotropy)
+output_dir = "frame_analysis_results"
+pdf_name = "PreAnnotation_Quality_Report.pdf"
+use_embedding_cache = True  # Cache embeddings for faster re-runs
+```
+
+#### Parameter Guide
+
+**anisotropy_threshold** (Motion Blur Detection):
+- `2.5`: Very strict - Only perfectly sharp frames (no motion blur or camera shake)
+- `3.6`: **Recommended** - Balanced motion blur detection
+- `5.0`: Lenient - Allow more motion blur
+
+**use_embedding_cache**:
+- `True`: **Recommended** - Saves embeddings to disk for faster re-runs
+- `False`: Recompute embeddings every time (slower)
+
+#### PDF Report Structure (5 Pages)
+
+**Page 1: Executive Summary**
+- Total frames, activities detected, quality score (0-10)
+- Breakdown: dark/medium/bright and blurry/sharp frames
+- Key recommendations (frames to drop, scenarios to add)
+- Overall verdict: "Ready for annotation" / "Needs improvement" / "Not ready"
+
+**Page 2: Quality Metrics Dashboard**
+- Brightness histogram (shows low-light threshold at 80)
+- Anisotropy histogram (shows motion blur threshold)
+- Lighting distribution pie chart (Dark/Medium/Bright %)
+- Motion blur distribution pie chart (Blurry/Sharp %)
+- **Specific recommendations**: "Drop 45 blurry frames"
+
+**Page 3: Diversity Analysis**
+- UMAP scatter plot (frames colored by activity cluster)
+- Activity breakdown table with frame counts
+- Assessment of scenario diversity
+
+**Page 4-m: Activity Visual Examples** ⭐
+- **Montage for each activity** (4×3 grid of 12 sample images)
+- Visual validation of clustering quality
+- Labeled by Activity ID
+
+**Page m+1: Coverage Gap Analysis**
+- Heatmap: Activity × Lighting conditions
+- Identifies missing combinations
+- Final assessment with actionable verdict
+
+#### Interpreting Results
+
+**Quality Score**:
+- `7-10`: ✅ Good quality, ready for annotation
+- `5-7`: ⚠️ Moderate quality, review recommendations
+- `<5`: ❌ Poor quality, improve before annotation
+
+**Activity Count**:
+- `1-2 activities`: ⚠️ Low diversity (frames from same video/angle)
+- `3-6 activities`: ✅ Good diversity
+- `7+ activities`: ✅ Excellent diversity
+
+**Example Recommendations**:
+```
+⚠️ 60% frames are low-light. Consider adding well-lit frames or dropping extreme dark frames.
+⚠️ 45% frames are blurry (motion blur). Use higher shutter speed, stabilize camera, or reduce camera movement. Consider dropping blurry frames.
+ℹ️ Only 2 activity patterns detected. Capture more diverse work scenarios.
+✅ Dataset quality looks good! Proceed with annotation.
+```
+
+#### Activity Clustering Explained
+
+**What is an "Activity"?**
+A semantically distinct group of frames representing:
+- Different work scenarios (installation vs inspection vs welding)
+- Different object arrangements (left/center/right)
+- Different camera angles (close-up vs wide-angle)
+- Different environmental contexts
+
+**How to Validate**:
+1. Check Page 4 montages
+2. **Good clustering**: All 12 images in Activity 0 montage show similar scenario
+3. **Poor clustering**: Montage shows mixed unrelated scenarios
+4. **Fix**: Adjust `distance_threshold` (lower for stricter grouping)
+
+**Visual Example**:
+```
+Activity 0 montage: [12 images all showing person screwing from left angle] ✅
+Activity 1 montage: [6 welding, 3 drilling, 3 inspection mixed together] ❌
+```
+
+#### Validation Workflow
+
+1. **Run script** with default settings
+2. **Review PDF Page 1**: Check quality score and recommendations
+3. **Review PDF Page 2**: Identify motion-blurred/dark frames to drop
+4. **Review PDF Page 4**: Validate activity montages look correct
+5. **Review PDF Page 5**: Check for coverage gaps
+6. **Take action**:
+   - Drop blurry frames (anisotropy > threshold)
+   - Extract more frames from diverse videos if only 1-2 activities
+   - Balance lighting if heavily skewed to dark/bright
+7. **Re-run** if needed after improvements
+
+#### Example Use Case
+
+**Scenario**: Extracted 1000 frames from 3 videos for YOLO training
+
+**Result**:
+```
+Activities detected: 8
+Quality score: 7.2/10
+Blurry frames (motion blur): 12% (120 frames)
+Dark frames: 45% (450 frames)
+Coverage gaps: Activity 3 has no bright lighting frames
+```
+
+**Action**:
+1. Drop 120 motion-blurred frames
+2. Extract more frames from bright lighting conditions
+3. Add frames showing Activity 3 in bright light
+4. Final dataset: 900 high-quality, diverse frames ready for annotation ✅
+
+#### Output Structure
+```
+frame_analysis_results/
+└── PreAnnotation_Quality_Report.pdf
+```
+
+---
 
 ### Script: 1. master_script_pretrain.py
 **Automated PRE-TRAINING pipeline** - Analyzes annotated dataset before model training
@@ -43,7 +223,7 @@ Edit these at the top of `main()` function:
 ```python
 ## GLOBAL VARIABLES PRE-TRAINING ##
 imgs_label_path = "path/to/LabelledData"
-class_names = ["class1", "class2", "class3"]
+class_names = ["class0", "class1", "class2"]
 cropped_bbox_dir = "cropped_imgs_by_class"
 batch_size = "64"
 epsilon = "0.15"  # Ignored if auto_tune is used
@@ -58,22 +238,22 @@ pdf_name = "PDF_REPORT"
 ```
 
 #### Pipeline Steps
-1. **Crop Extraction** (`scripts/1. ann_txt_files_crop_bbox.py`)
+1. **Crop Extraction** (`postannotation_scripts/1. ann_txt_files_crop_bbox.py`)
    - Extracts bounding boxes from annotated images
    - Validates dataset integrity
    - Organizes crops by class
    - Saves statistics to temp txt file
 
-2. **Embedding Generation** (`scripts/2. save_dinov2_embeddings_per_class.py`)
+2. **Embedding Generation** (`postannotation_scripts/2. save_dinov2_embeddings_per_class.py`)
    - Generates 768D DINOv2 embeddings
    - GPU-accelerated with mixed precision
 
-3. **Clustering Analysis** (`scripts/3. clustering_of_classes_embeddings.py`)
+3. **Clustering Analysis** (`postannotation_scripts/3. clustering_of_classes_embeddings.py`)
    - Auto-tunes DBSCAN epsilon per class if selected
    - Generates visualizations and montages
    - Cross-class separability analysis if selected
 
-4. **PDF Report Generation** (Optional - `scripts/4. generate_pdf.py`)
+4. **PDF Report Generation** (Optional - `postannotation_scripts/4. generate_pdf.py`)
    - Combines dataset statistics and clustering visualizations
    - Creates professional multi-page PDF report
    - Only runs if `pdf_generate = True` 
@@ -100,7 +280,7 @@ python "1. master_script_dinov2_posttrain.py"
 ## GLOBAL VARIABLES POST-TRAINING ##
 model_path = "path/to/model.pt"
 video_path = "path/to/video.mp4"
-classes_space_separated = ["board", "screw", "screw_holder"]
+classes_space_separated = ["class0", "class1", "class2"]
 per_class_num_frames = "1000"  # Target samples per class
 conf_thresh = "0.4"
 frame_stride_per_video = "3"  # Process every 3rd frame
@@ -113,7 +293,7 @@ max_cluster_samples = "5"
 ```
 
 #### Pipeline Steps
-1. **Detection & Cropping** (`scripts/1. yolo_model_crop_bbox_per_class.py`)
+1. **Detection & Cropping** (`postannotation_scripts/1. yolo_model_crop_bbox_per_class.py`)
    - Runs YOLOv8 inference on video
    - Applies frame stride (e.g., every 3rd frame)
    - Smart sampling: uniformly extracts target number of crops per class
@@ -184,15 +364,15 @@ Both scripts provide detailed progress tracking.
 
 ## Individual Scripts Documentation
 
-### Script: scripts/1. ann_txt_files_crop_bbox.py
+### Script: postannotation_scripts/1. ann_txt_files_crop_bbox.py
 **Stage: PRE-TRAINING** - Analyze annotated data before model training
 
 #### Usage
 ```bash
-python "scripts/1. ann_txt_files_crop_bbox.py" \
+python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" \
     --imgs_label_path "path/to/LabelledData" \
-    --classes 0 1 2 3 4 \
-    --class_ids_to_names 0 board 1 screw 2 screw_holder 3 tape 4 case \
+    --classes 0 1 2 \
+    --class_ids_to_names 0 class0 1 class1 2 class2 \
     --output_dir cropped_imgs_by_class
 ```
 
@@ -223,9 +403,9 @@ The script performs comprehensive validation before cropping:
 ------------------------------------------------------------
 
 ❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):
-    Expected class IDs: ['0', '1', '2', '3', '4']
+    Expected class IDs: ['0', '1', '2']
     -----------------------------------------------
-    Class ID '5': 12 annotations in 3 file(s)
+    Class ID '3': 12 annotations in 3 file(s)
         - frame_001.txt
         - frame_042.txt
         - frame_089.txt
@@ -233,14 +413,12 @@ The script performs comprehensive validation before cropping:
     ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!
 
 📊  CLASS DISTRIBUTION (all annotations in dataset):
-    Class 0 (board): 450 annotations (30.2%)
-    Class 1 (screw): 520 annotations (34.9%)
-    Class 2 (screw_holder): 380 annotations (25.5%)
-    Class 3 (tape): 128 annotations (8.6%)
-    Class 4 (case): 12 annotations (0.8%)
-⚠️  Class ID '5': 12 annotations (UNKNOWN)
+    Class 0 (class0): 450 annotations (42.5%)
+    Class 1 (class1): 520 annotations (49.1%)
+    Class 2 (class2): 90 annotations (8.5%)
+⚠️  Class ID '3': 12 annotations (UNKNOWN)
 
-⚠️  CLASS IMBALANCE WARNING: Ratio 520:12 = 43.3x
+⚠️  CLASS IMBALANCE WARNING: Ratio 520:90 = 5.8x
     Consider balancing your dataset for better YOLO training.
 ```
 
@@ -253,10 +431,10 @@ This catches:
 #### Output Structure
 ```
 cropped_imgs_by_class/
-├── board/
+├── class0/
 │   ├── frame_001_crop_0.png
 │   └── ...
-├── screw/
+├── class1/
 └── ...
 ```
 
@@ -266,15 +444,15 @@ cropped_imgs_by_class/
 
 ---
 
-### Script: scripts/1. yolo_model_crop_bbox_per_class.py
+### Script: postannotation_scripts/1. yolo_model_crop_bbox_per_class.py
 **Stage: POST-TRAINING** - Verify trained model detections
 
 #### Usage
 ```bash
-python "scripts/1. yolo_model_crop_bbox_per_class.py" \
+python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
     --model "path/to/model.pt" \
     --video "path/to/video.mp4" \
-    --classes class1 class2 class3 \
+    --classes class0 class1 class2 \
     --frame_stride 3 \
     --num_frames 100 \
     --conf_thresh 0.4 \
@@ -316,14 +494,14 @@ cropped_images/
 
 ---
 
-### Script: scripts/2. save_dinov2_embeddings_per_class.py
+### Script: postannotation_scripts/2. save_dinov2_embeddings_per_class.py
 **Generates semantic embeddings from cropped images**
 
 This script processes cropped object images and uses DINOv2 model to generate embeddings for each class. Optimized for GPU usage with memory management and mixed precision support.
 
 #### Usage
 ```bash
-python "scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_images --batch 32
+python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_images --batch 32
 ```
 
 #### Parameters
@@ -384,19 +562,19 @@ python "scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_images 
 
 ---
 
-### Script: scripts/3. clustering_of_classes_embeddings.py
+### Script: postannotation_scripts/3. clustering_of_classes_embeddings.py
 **Discovers sub-groups and outliers using DBSCAN**
 
 #### Basic Usage
 ```bash
 # Auto-tuning (recommended)
-python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3
 
 # Manual epsilon
-python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --eps 0.15 --min_samples 3
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --eps 0.15 --min_samples 3
 
 # Full analysis with visualizations
-python "scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3 --save_montage --cross_class
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3 --save_montage --cross_class
 ```
 
 #### Parameters
@@ -490,9 +668,9 @@ clustering_results/
 
 **Example Output**:
 ```
-board:        2 clusters,  4 outliers (2.0%)   → Consistent appearance
-screw:        4 clusters, 21 outliers (10.5%)  → Multiple orientations
-screw_holder: 7 clusters, 12 outliers (6.0%)   → High diversity
+class0:  2 clusters,  4 outliers (2.0%)   → Consistent appearance
+class1:  4 clusters, 21 outliers (10.5%)  → Multiple orientations
+class2:  7 clusters, 12 outliers (6.0%)   → High diversity
 ```
 
 #### Common Issues
@@ -504,17 +682,17 @@ screw_holder: 7 clusters, 12 outliers (6.0%)   → High diversity
 
 ---
 
-### Script: scripts/4. generate_pdf.py
+### Script: postannotation_scripts/4. generate_pdf.py
 **Generate comprehensive PDF reports combining dataset statistics and clustering visualizations**
 
 Creates a multi-page PDF report that combines Script 1 dataset quality statistics with Script 3 clustering montages for professional presentation and documentation.
 
 #### Usage
 ```bash
-python "scripts/4. generate_pdf.py" \
+python "postannotation_scripts/4. generate_pdf.py" \
     --temp_txt_file temp_ann_file.txt \
     --clustering_dir clustering_results \
-    --pdf_name "REPORT_BMW_7.0"
+    --pdf_name "REPORT"
 ```
 
 #### Parameters
@@ -639,17 +817,17 @@ python "1. master_script_pretrain.py"
 ### Pre-Training Analysis (Manual)
 ```bash
 # 1. Extract crops from annotated data
-python "scripts/1. ann_txt_files_crop_bbox.py" \
+python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" \
     --imgs_label_path "./LabelledData" \
     --classes 0 1 2 \
-    --class_ids_to_names 0 board 1 screw 2 screw_holder
+    --class_ids_to_names 0 class0 1 class1 2 class2
 
 # 2. Generate embeddings
-python "scripts/2. save_dinov2_embeddings_per_class.py" \
+python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" \
     --root ./cropped_imgs_by_class --batch 32
 
 # 3. Analyze clusters
-python "scripts/3. clustering_of_classes_embeddings.py" \
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
     --root ./cropped_imgs_by_class \
     --auto_tune --min_samples 3 --save_montage
 ```
@@ -669,10 +847,10 @@ python "1. master_script_dinov2_posttrain.py"
 ### Post-Training Analysis (Manual)
 ```bash
 # 1. Extract crops using trained model
-python "scripts/1. yolo_model_crop_bbox_per_class.py" \
+python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
     --model "model.pt" \
     --video "video.mp4" \
-    --classes board screw screw_holder \
+    --classes class0 class1 class2 \
     --num_frames 200
 
 # 2-3. Same as pre-training (use --root ./cropped_images)
@@ -682,23 +860,25 @@ python "scripts/1. yolo_model_crop_bbox_per_class.py" \
 
 ## Pipeline Summary
 
-| Script | Input | Output | Purpose |
-|--------|-------|--------|---------|
-| **1. master_script_dinov2_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** |
-| **1. master_script_dinov2_posttrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** |
-| scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection |
-| scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification |
-| scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations |
-| scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis |
-| scripts/4. generate_pdf.py | Script 1 stats + Script 3 results | PDF report | Professional documentation |
-| 1. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration |
+| Script | Input | Output | Purpose | When to Use |
+|--------|-------|--------|---------|-------------|
+| **1. master_script_dinov2_PreAnnotate.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** | BEFORE annotation |
+| **1. master_script_dinov2_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** | AFTER annotation |
+| **1. master_script_dinov2_posttrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** | AFTER model training |
+| postannotation_scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection | After annotation |
+| postannotation_scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification | After training |
+| postannotation_scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations | Part of pipeline |
+| postannotation_scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis | Part of pipeline |
+| postannotation_scripts/4. generate_pdf.py | Script 1 stats + Script 3 results | PDF report | Professional documentation | Part of pipeline |
+| 1. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration | Optional addon |
 
 ---
 
 ## Key Takeaways
 - 🚀 **Use master scripts** for automated pipeline execution with memory management
-- **Pre-training**: Validate annotation quality and understand labeled patterns
-- **Post-training**: Verify model detections match expectations
+- **Pre-annotation** (NEW): Validate frame quality/diversity BEFORE annotation effort
+- **Pre-training**: Validate annotation quality and understand labeled patterns AFTER annotation
+- **Post-training**: Verify model detections match expectations AFTER model training
 - **Clustering insights**: Identify sub-groups, outliers, and data quality issues
 - **Actionable**: Adjust augmentation, split classes, or fix annotations based on results
 - ❄️ **Laptop GPU users**: Master scripts include cooling breaks to prevent throttling

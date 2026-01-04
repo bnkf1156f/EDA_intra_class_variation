@@ -95,14 +95,12 @@ def main():
     ## ---------------------------------##
     ##  GLOBAL VARIABLES PRE-TRAINING   ##
     ## ---------------------------------##
-    imgs_label_path = r"LabelledDataPath"
+    imgs_label_path = r"path/to/LabelledData"  # Replace with your annotated images directory
     class_names = [
-        "board",
-        "screw",
-        "screw_holder",
-        "tape",
-        "case",
-    ]
+        "class0",
+        "class1",
+        "class2",
+    ]  # Replace with your class names
 
     cropped_bbox_dir = "cropped_imgs_by_class"
 
@@ -147,7 +145,7 @@ def main():
     print("⚠️  This step is time-consuming")
     print("="*60)
     if pdf_generate:
-        run_step("scripts/1. ann_txt_files_crop_bbox.py", [
+        run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
             "--imgs_label_path", imgs_label_path,
             "--classes"] + class_ids + [  # Unpack list
             "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
@@ -155,7 +153,7 @@ def main():
             "--output_txt_file", temp_file
         ])
     else:
-        run_step("scripts/1. ann_txt_files_crop_bbox.py", [
+        run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
             "--imgs_label_path", imgs_label_path,
             "--classes"] + class_ids + [  # Unpack list
             "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
@@ -169,7 +167,7 @@ def main():
     print("="*60)
     print("⚠️  This step is GPU-intensive")
     
-    run_step("scripts/2. save_dinov2_embeddings_per_class.py", [
+    run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", [
         "--root", cropped_bbox_dir,
         "--batch", str(batch_size),
         "--save_suffix", save_suffix
@@ -180,7 +178,7 @@ def main():
     print("\n" + "="*60)
     print(f"STEP 3/{total_steps}: CLUSTERING ANALYSIS")
     print("="*60)
-    run_step("scripts/3. clustering_of_classes_embeddings.py", [
+    run_step("postannotation_scripts/3. clustering_of_classes_embeddings.py", [
         "--root", cropped_bbox_dir,
         "--eps", str(epsilon),
         "--min_samples", str(min_pts),
@@ -197,7 +195,7 @@ def main():
         print("\n" + "="*60)
         print("STEP 4/4: GENERATING PDF REPORT")
         print("="*60)
-        run_step("scripts/4. generate_pdf.py", [
+        run_step("postannotation_scripts/4. generate_pdf.py", [
             "--temp_txt_file", temp_file,
             "--clustering_dir", output_cluster_dir,
             "--pdf_name", pdf_name

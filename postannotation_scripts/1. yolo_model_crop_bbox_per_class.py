@@ -19,9 +19,6 @@ This script:
  - For each detection whose class name is in the provided list:
      - crops the bounding box from the frame
      - saves crop to output_dir/<class_name>/<index>.png
-
-python .\EDA_intra_class_variation_scripts\yolo_model_crop_bbox_per_class.py --model "C:/VkRetro/CarrierInspectionVids/blower_shelf_inspection_new_classes_v8_L_5.pt" --video "C:/VkRetro/CarrierInspectionVids/custom made/two boards in one frame.mp4" --classes board screw screw_holder tape --num_frames 200
-
 """
 
 import os

@@ -6,8 +6,8 @@ This script processes a folder containing YOLO-format labelled images (.png/.jpg
 Usage:
     python ann_txt_files_crop_bbox.py \
         --imgs_label_path "path/to/LabelledData" \
-        --classes 0 1 2 3 4 \
-        --class_ids_to_names 0 board 1 screw 2 screw_holder 3 tape 4 case \
+        --classes 0 1 2 \
+        --class_ids_to_names 0 class0 1 class1 2 class2 \
         --output_dir cropped_imgs_by_class
 
 This script:
@@ -18,7 +18,6 @@ This script:
  - Prints a summary of all crops extracted per class
  - Save important info in temporary txt file if argument sent
 
-python '.\1. ann_txt_files_crop_bbox.py' --imgs_label_path "C:/VkRetro/YoloDetectExtractFrames/EDA_intra_class_variation_scripts/CarrierInspectionLabelledData" --classes 0 1 2 3 4 --class_ids_to_names 0 board 1 screw 2 screw_holder 3 tape 4 case
 """
 
 import os
@@ -44,7 +43,7 @@ def main():
     p = argparse.ArgumentParser(description="Labelled Frames -> sampled cropped images by class")
     p.add_argument("--imgs_label_path", required=True, help="Path to Images+Labels Path")
     p.add_argument("--classes", nargs="+", required=True, help="Class IDs required")
-    p.add_argument("--class_ids_to_names", nargs="+", required=True, help="Pairs of class_id class_name (e.g. 0 board 1 screw 2 screw_holder)")
+    p.add_argument("--class_ids_to_names", nargs="+", required=True, help="Pairs of class_id class_name (e.g. 0 class0 1 class1 2 class2)")
     p.add_argument("--output_dir", default="cropped_imgs_by_class", help="Output Directory to store cropped images")
     p.add_argument("--output_txt_file", help="Temporary TXT file to store details for PDF generation at the end")
     args = p.parse_args()

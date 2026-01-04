@@ -96,9 +96,9 @@ def main():
     ## ---------------------------------##
     ##         GLOBAL VARIABLES         ##
     ## ---------------------------------##
-    model_path = r"C:/VkRetro/CarrierInspectionVids/blower_shelf_inspection_new_classes_v8_L_5.pt"
-    video_path = r"C:/VkRetro/CarrierInspectionVids/custom made/till 20 oct.mp4"
-    classes_space_separated = ["board", "screw", "screw_holder"]
+    model_path = r"path/to/your/model.pt"  # Replace with your YOLO model path
+    video_path = r"path/to/your/video.mp4"  # Replace with your video file path
+    classes_space_separated = ["class0", "class1", "class2"]  # Replace with your class names
     per_class_num_frames = 1000
     conf_thresh = 0.4
     frame_stride_per_video = 3
@@ -140,7 +140,7 @@ def main():
     print("STEP 1/3: EXTRACTING BOUNDING BOXES FROM VIDEO")
     print("⚠️  This step is time-consuming")
     print("="*60)
-    run_step("scripts/1. yolo_model_crop_bbox_per_class.py", [
+    run_step("postannotation_scripts/1. yolo_model_crop_bbox_per_class.py", [
         "--model", model_path,
         "--video", video_path,
         "--classes"] + classes_space_separated + [
@@ -158,7 +158,7 @@ def main():
     print("⚠️  This step is GPU-intensive")
     print(f"   Processing ~{int(per_class_num_frames) * len(classes_space_separated)} images")
     
-    run_step("scripts/2. save_dinov2_embeddings_per_class.py", [
+    run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", [
         "--root", cropped_bbox_dir,
         "--batch", str(batch_size),
         "--save_suffix", save_suffix
@@ -169,7 +169,7 @@ def main():
     print("\n" + "="*60)
     print("STEP 3/3: CLUSTERING ANALYSIS")
     print("="*60)
-    run_step("scripts/3. clustering_of_classes_embeddings.py", [
+    run_step("postannotation_scripts/3. clustering_of_classes_embeddings.py", [
         "--root", cropped_bbox_dir,
         "--eps", str(epsilon),
         "--min_samples", str(min_pts),

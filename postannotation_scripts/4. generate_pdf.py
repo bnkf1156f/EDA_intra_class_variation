@@ -9,7 +9,7 @@ Usage:
     python "4. generate_pdf.py" \
         --temp_txt_file temp_ann_file.txt \
         --clustering_dir clustering_results \
-        --pdf_name "REPORT_BMW_7.0"
+        --pdf_name "REPORT"
 
 Output:
     - Page 1: Dataset quality report with charts
@@ -214,7 +214,7 @@ def create_placeholder_image(class_name, output_path):
     return output_path
 
 
-def build_pdf(temp_txt_file, clustering_dir, pdf_name):
+def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality):
     """Build the complete PDF report."""
     print("\n" + "="*70)
     print("PDF REPORT GENERATION")
@@ -388,7 +388,7 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name):
             if scaled_height <= max_page_height:
                 # Compress to JPEG for smaller file size
                 compressed_path = temp_dir / f"{class_name}_compressed.jpg"
-                img_pil.convert('RGB').save(compressed_path, 'JPEG', quality=90, optimize=True)
+                img_pil.convert('RGB').save(compressed_path, 'JPEG', quality=pdf_quality, optimize=True)
                 img = Image(str(compressed_path), width=max_width, height=scaled_height)
                 story.append(img)
             else:
@@ -424,7 +424,7 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name):
 
                     # Save chunk temporarily as compressed JPEG (much smaller)
                     chunk_path = temp_dir / f"{class_name}_chunk_{chunk_idx}.jpg"
-                    chunk.convert('RGB').save(chunk_path, 'JPEG', quality=90, optimize=True)
+                    chunk.convert('RGB').save(chunk_path, 'JPEG', quality=pdf_quality, optimize=True)
 
                     # Calculate chunk height after scaling
                     chunk_height = (bottom - top) * width_scale
@@ -499,7 +499,9 @@ def main():
 
     args = parser.parse_args()
 
-    build_pdf(args.temp_txt_file, args.clustering_dir, args.pdf_name)
+    pdf_quality = 75
+
+    build_pdf(args.temp_txt_file, args.clustering_dir, args.pdf_name, pdf_quality)
 
 
 if __name__ == "__main__":

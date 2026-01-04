@@ -5,7 +5,7 @@ Generates interactive HTML visualizations from existing embeddings.
 Run AFTER Script 2 (embeddings generated). Independent of Script 3.
 
 Usage:
-    python '.\1. interactive_cluster_viewer.py' --root "cropped_imgs_by_class_bmw_7" --output_dir "interactive_clusters_results_bmw_7" --min_samples 3
+    python '.\1. interactive_cluster_viewer.py' --root "cropped_imgs_by_class" --output_dir "interactive_clusters_results" --min_samples 3
 
 Features:
     - Hover over points to see filename
