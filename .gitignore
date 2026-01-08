@@ -16,12 +16,13 @@ models/
 # Output directories
 cropped_images/
 cropped_imgs/
-cropped_imgs_by_class/
+cropped_imgs_by_class*/
 clustering_results/
-clustering_results_*/
+clustering_results*/
 frame_analysis_results/
 frame_analysis_results_*/
 interactive_clusters_results/
+interactive_clusters_results*/
 
 # PDF reports
 *.pdf
