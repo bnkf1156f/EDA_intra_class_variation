@@ -1819,9 +1819,9 @@ def main():
     print(f"\nTotal frames found: {len(image_paths)}")
 
     # Load YOLOv11 Pose model
-    print(f"\nLoading YOLO11 Pose model...")
-    pose_model = YOLO('models/yolo11n-pose.pt')
-    print("  ✅ YOLOv11 Pose model loaded")
+    print(f"\nLoading YOLO26 Pose model...")
+    pose_model = YOLO('models/yolo26n-pose.pt')
+    print("  ✅ YOLOv26 Pose model loaded")
 
     # STEP 2: PERSON DETECTION & POSE EXTRACTION 
     print("\n" + "="*60)
