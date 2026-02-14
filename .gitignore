@@ -3,6 +3,7 @@ temp_ann_file.txt
 temp_multiview_emb*.npy
 temp_pdf_charts/
 temp_preannotation_charts/
+to-do.txt
 
 # Model files
 models/

@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
 Pre-annotation frame quality assessment pipeline.
-Analyzes raw frames BEFORE annotation using DINOv2 embeddings, activity clustering,
-and quality metrics to identify issues and assess dataset diversity.
+Analyzes raw frames BEFORE annotation:
+    DINOv2 struggles with cluttered frames containing multiple objects and noise because it excels at single-object semantics, 
+    but was found to dilute in global context in complex scenes. 
+    Therefore, we use "SigLIP" here: Fits 8GB, multi-object semantic understanding, Captures fine details, encode spatial relationships well
 
-Embedding Strategy:
-- Frames WITH persons: Scene embedding (768d) weighted 0.7 + lightweight pose features (24d) weighted 0.3 = 792d total
-- Frames WITHOUT persons: Scene embeddings (768d) + zero-padded pose features (24d) = 792d total
+Provides Quality metrics to identify issues and assess dataset diversity.
+
+Embedding Strategy (SigLIP-base-224):
+- Frames WITH persons: Scene embedding (768d) weighted 0.9 + lightweight pose features (24d) weighted 0.1
+- Frames WITHOUT persons: Scene embeddings (768d) + zero-padded pose features (24d)
 - Weights are applied to CONCATENATED dimensions (not blended scalars)
+- Total dimensionality: 792d (768 scene + 24 pose)
 
 Tuning Guide:
     EMBEDDING WEIGHTS (lines 339-340 in compute_multiview_embeddings):
-    - More scene-driven clustering (different scenes/objects/environments) => Increase scene_emb weight (0.7 → 0.8+)
-    - More pose-driven clustering (different worker activities/postures) => Increase pose_features weight (0.3 → 0.4+)
-    - Current: 70% scene weight + 30% pose weight (balanced for both environment and activity diversity)
+    - More scene-driven clustering (different scenes/objects/environments) => Increase scene_emb weight (0.9 → 0.95+)
+    - More pose-driven clustering (different worker activities/postures) => Increase pose_features weight (0.1 → 0.15+)
+    - Current: 90% scene weight + 10% pose weight (balanced for both environment and activity diversity)
 
     CLUSTERING GRANULARITY (in main):
     - Want more fine-grained activity clusters => Increase n_components (8 → 16) OR decrease min_dist in UMAP
@@ -32,7 +37,7 @@ Tuning Guide:
 """
 
 from pathlib import Path
-from transformers import AutoImageProcessor, AutoModel
+from transformers import AutoProcessor, SiglipVisionModel
 import torch
 import numpy as np
 import gc
@@ -297,15 +302,16 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
             scene_embs = None
             if len(batch_scene_imgs) > 0:
                 inputs_scene = processor(images=batch_scene_imgs, return_tensors="pt")
-                inputs_scene = {k: v.to(device) for k, v in inputs_scene.items()}
+                # SigLIP vision model only needs pixel_values
+                inputs_scene = {'pixel_values': inputs_scene['pixel_values'].to(device)}
 
                 if device == "cuda":
                     with torch.amp.autocast('cuda'):
                         outputs_scene = model(**inputs_scene)
-                        scene_embs = outputs_scene.last_hidden_state.mean(dim=1).cpu().numpy()
+                        scene_embs = outputs_scene.pooler_output.cpu().numpy()  # SigLIP uses pooler_output (768d)
                 else:
                     outputs_scene = model(**inputs_scene)
-                    scene_embs = outputs_scene.last_hidden_state.mean(dim=1).cpu().numpy()
+                    scene_embs = outputs_scene.pooler_output.cpu().numpy()  # SigLIP uses pooler_output (768d)
 
                 del outputs_scene, inputs_scene
 
@@ -336,8 +342,8 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
 
                     # Pre-allocate output array to avoid temporary allocations
                     combined_emb = np.empty(768 + pose_features_dim, dtype=np.float32)
-                    combined_emb[:768] = scene_emb * 0.7      # Scene dominant
-                    combined_emb[768:] = pose_features_agg * 0.3  # Lightweight pose supplement
+                    combined_emb[:768] = scene_emb * 0.9      # Scene dominant
+                    combined_emb[768:] = pose_features_agg * 0.1  # Lightweight pose supplement
                     multiview_embeddings.append(combined_emb)
                 else:
                     # Frame without person: scene only + zero-padded pose features
@@ -1758,7 +1764,7 @@ def main():
     
     yolo_batch_size = 8   # YOLO pose detection batch size
     yolo_conf_person_thr = 0.3 # YOLO pose detection confidence threshold
-    batch_size = 64       # DINOv2 inference batch size
+    batch_size = 64       # Embedding inference batch size
 
     anisotropy_threshold = 3.6  # Directional gradient anisotropy threshold for motion blur detection. Greater than this are blurry frames
 
@@ -1774,14 +1780,13 @@ def main():
     grid_cols_activities = 4  # Grid columns for activity montages
     grid_cols_blurry = 4  # Grid columns for blurry sample montage 
 
-    output_dir = "frame_analysis_results_dinov2_pose_emb"  # Output directory for results
+    output_dir = "frame_analysis_results_siglip_pose_emb"  # Output directory for results
     pdf_name = "PreAnnotation_Quality_Report.pdf"  # Output PDF filename
     use_embedding_cache = True  # Set to True to cache embeddings (recommended for large datasets >5000 frames)
 
-    model_name = "facebook/dinov2-base"
-    # facebook/dinov2-base --- BEST results
-    # facebook/dinov2-with-registers-base
-    # facebook/dinov3-vitl16-pretrain-lvd1689m --- requires permission
+    model_name = "google/siglip-base-patch16-224"  # Fast (1.4 min/10K frames) + 768d embeddings
+    # siglip-base-patch16-384 --- smaller model ~25% quality
+    # google/siglip-so400m-patch14-384 --- heavier model ~40% quality
 
     # Setup
     frames_root = Path(frames_dir)
@@ -1801,10 +1806,10 @@ def main():
     else:
         print("Using CPU - GPU not available")
 
-    # Load DINOv2 model from Hugging Face (cached to models/ folder)
-    print(f"\nLoading model from Hugging Face: {model_name} ...")
-    processor = AutoImageProcessor.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name).to(device)
+    # Load SigLIP vision model from Hugging Face (cached to models/ folder)
+    print(f"\nLoading SigLIP vision model from Hugging Face: {model_name} ...")
+    processor = AutoProcessor.from_pretrained(model_name)
+    model = SiglipVisionModel.from_pretrained(model_name).to(device)
 
     # STEP 1: SCAN FRAMES
     print("\n" + "="*60)
@@ -1819,9 +1824,9 @@ def main():
     print(f"\nTotal frames found: {len(image_paths)}")
 
     # Load YOLOv11 Pose model
-    print(f"\nLoading YOLO26 Pose model...")
-    pose_model = YOLO('models/yolo26n-pose.pt')
-    print("  ✅ YOLOv26 Pose model loaded")
+    print(f"\nLoading YOLO11 Pose model...")
+    pose_model = YOLO('models/yolo11n-pose.pt')
+    print("  ✅ YOLO11 Pose model loaded")
 
     # STEP 2: PERSON DETECTION & POSE EXTRACTION 
     print("\n" + "="*60)
