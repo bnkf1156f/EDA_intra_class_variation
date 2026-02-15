@@ -621,12 +621,20 @@ def create_quality_chart(metrics, output_path, anisotropy_threshold):
     medium_count = np.sum(lighting_labels == 1)
     bright_count = np.sum(lighting_labels == 2)
 
-    colors_pie = ['#424242', '#FFA726', '#FFEB3B']
-    labels = [f'Dark (<80)\n{dark_count} frames',
-              f'Medium (80-175)\n{medium_count} frames',
-              f'Bright (>175)\n{bright_count} frames']
-    ax.pie([dark_count, medium_count, bright_count], labels=labels, colors=colors_pie,
-           autopct='%1.1f%%', startangle=90, textprops={'fontsize': 10, 'weight': 'bold'})
+    # Filter out zero-count slices to avoid label overlap
+    all_counts = [dark_count, medium_count, bright_count]
+    all_colors = ['#424242', '#FFA726', '#FFEB3B']
+    all_labels = [f'Dark (<80)\n{dark_count} frames',
+                  f'Medium (80-175)\n{medium_count} frames',
+                  f'Bright (>175)\n{bright_count} frames']
+
+    filtered_counts = [c for c in all_counts if c > 0]
+    filtered_colors = [all_colors[i] for i, c in enumerate(all_counts) if c > 0]
+    filtered_labels = [all_labels[i] for i, c in enumerate(all_counts) if c > 0]
+
+    ax.pie(filtered_counts, labels=filtered_labels, colors=filtered_colors,
+           autopct='%1.1f%%', startangle=90, pctdistance=0.85, labeldistance=1.2,
+           textprops={'fontsize': 10, 'weight': 'bold'})
     ax.set_title('Lighting Distribution', fontsize=12, fontweight='bold')
 
     # Blur category pie chart (motion blur only)
@@ -635,11 +643,19 @@ def create_quality_chart(metrics, output_path, anisotropy_threshold):
     blurry_count = np.sum(blurry_mask)
     sharp_count = len(metrics['anisotropy']) - blurry_count
 
-    colors_blur = ['#f44336', '#4caf50']
-    labels_blur = [f'Blurry (motion)\n{blurry_count} frames',
-                   f'Sharp\n{sharp_count} frames']
-    ax.pie([blurry_count, sharp_count], labels=labels_blur, colors=colors_blur,
-           autopct='%1.1f%%', startangle=90, textprops={'fontsize': 10, 'weight': 'bold'})
+    # Filter out zero-count slices to avoid label overlap
+    all_blur_counts = [blurry_count, sharp_count]
+    all_blur_colors = ['#f44336', '#4caf50']
+    all_blur_labels = [f'Blurry (motion)\n{blurry_count} frames',
+                       f'Sharp\n{sharp_count} frames']
+
+    filtered_blur_counts = [c for c in all_blur_counts if c > 0]
+    filtered_blur_colors = [all_blur_colors[i] for i, c in enumerate(all_blur_counts) if c > 0]
+    filtered_blur_labels = [all_blur_labels[i] for i, c in enumerate(all_blur_counts) if c > 0]
+
+    ax.pie(filtered_blur_counts, labels=filtered_blur_labels, colors=filtered_blur_colors,
+           autopct='%1.1f%%', startangle=90, pctdistance=0.85, labeldistance=1.2,
+           textprops={'fontsize': 10, 'weight': 'bold'})
     ax.set_title('Motion Blur Quality', fontsize=12, fontweight='bold')
 
     plt.tight_layout()
@@ -828,7 +844,7 @@ def create_coverage_heatmap(activity_labels, lighting_labels, output_path):
 
 def create_activity_montage(image_paths, activity_id, max_samples, grid_cols, target_height):
     """
-    Create a montage of sample images for an activity cluster.
+    Create a montage of sample images for an activity cluster with filenames below each image.
     """
     # Sample up to max_samples images
     n_samples = min(len(image_paths), max_samples)
@@ -836,10 +852,12 @@ def create_activity_montage(image_paths, activity_id, max_samples, grid_cols, ta
 
     # Load images
     images = []
+    filenames = []
     for img_path in sampled_paths:
         img = load_image_safe(img_path)
         if img is not None:
             images.append(img)
+            filenames.append(img_path.name)  # img_path is already a Path object
 
     if len(images) == 0:
         # Return placeholder
@@ -858,21 +876,43 @@ def create_activity_montage(image_paths, activity_id, max_samples, grid_cols, ta
     n_images = len(resized_images)
     n_rows = (n_images + grid_cols - 1) // grid_cols
 
-    # Calculate montage dimensions
+    # Calculate montage dimensions (add 20px extra height per row for filename text)
     max_img_width = max(img.width for img in resized_images)
     montage_width = max_img_width * grid_cols + 10 * (grid_cols + 1)  # 10px padding
-    montage_height = target_height * n_rows + 10 * (n_rows + 1)
+    montage_height = (target_height + 20) * n_rows + 10 * (n_rows + 1)  # Extra 20px for filename
 
     # Create montage canvas
     montage = PILImage.new('RGB', (montage_width, montage_height), color='white')
+    draw = ImageDraw.Draw(montage)
 
-    # Paste images
-    for idx, img in enumerate(resized_images):
+    # Load font for filenames
+    try:
+        font = ImageFont.truetype("arial.ttf", 9)
+    except:
+        font = ImageFont.load_default()
+
+    # Paste images with filenames
+    for idx, (img, filename) in enumerate(zip(resized_images, filenames)):
         row = idx // grid_cols
         col = idx % grid_cols
         x = col * (max_img_width + 10) + 10
-        y = row * (target_height + 10) + 10
+        y = row * (target_height + 20 + 10) + 10
+
+        # Paste image
         montage.paste(img, (x, y))
+
+        # Add filename below image (truncate if too long)
+        if len(filename) > 25:
+            filename_display = filename[:22] + "..."
+        else:
+            filename_display = filename
+
+        text_bbox = draw.textbbox((0, 0), filename_display, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_x = x + (img.width - text_width) // 2
+        text_y = y + target_height + 3
+
+        draw.text((text_x, text_y), filename_display, fill='black', font=font)
 
     return montage
 
@@ -1018,13 +1058,14 @@ def generate_pdf_report(analysis_data, output_path, temp_dir, image_quality):
         alignment=TA_JUSTIFY
     )
 
-    # Add pages
+    # Add pages (blurry samples on Page 3 if exists, montages LAST)
     _add_executive_summary(story, analysis_data, title_style, heading_style, normal_style)
     _add_quality_dashboard(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality)
+    _add_blurry_samples(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality)
     _add_diversity_analysis(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality)
-    _add_activity_examples(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality)
     _add_cluster_quality(story, analysis_data, heading_style, subheading_style, normal_style)
     _add_coverage_analysis(story, analysis_data, temp_dir, heading_style, normal_style, image_quality)
+    _add_activity_examples(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality)
 
     # Build PDF
     doc.build(story)
@@ -1060,6 +1101,11 @@ def _add_executive_summary(story, analysis_data, title_style, heading_style, nor
         ['Valid Frames (loaded successfully)', str(stats['valid_frames']), ''],
         ['Activities Detected', str(stats['n_activities']),
          '✅ Good' if stats['n_activities'] >= 3 else '⚠ Limited diversity'],
+        ['', '', ''],
+        ['Frames with Persons Detected',
+         f"{stats['frames_with_persons']} ({stats['frames_with_persons']/stats['total_frames']*100:.1f}%)" if stats['total_frames'] > 0 else 'N/A (no frames)',
+         ''],
+        ['Max Persons in Single Frame', str(stats['max_persons_in_frame']), ''],
         ['', '', ''],
         ['Dark Frames (<80 brightness)', f"{stats['dark_count']} ({stats['dark_pct']:.1f}%)",
          '⚠ High' if stats['dark_pct'] > 60 else '✅ OK'],
@@ -1142,13 +1188,13 @@ def _add_quality_dashboard(story, analysis_data, temp_dir, heading_style, subhea
     story.append(Paragraph("Recommended Frames to Drop", subheading_style))
 
     stats = analysis_data['summary_stats']
-    drop_blurry = stats['blurry_count']
+    blurry_count = stats['blurry_count']
     drop_dark = stats['dark_count'] if stats['dark_pct'] > 70 else 0
 
-    if drop_blurry > 0 or drop_dark > 0:
+    if blurry_count > 0 or drop_dark > 0:
         drop_text = f"Based on quality thresholds, consider removing:<br/>"
-        if drop_blurry > 0:
-            drop_text += f"• <b>{drop_blurry} blurry frames</b> (motion blur with anisotropy >{analysis_data['anisotropy_threshold']})<br/>"
+        if blurry_count > 0:
+            drop_text += f"• <b>{blurry_count} blurry frames</b> (motion blur with anisotropy >{analysis_data['anisotropy_threshold']})<br/>"
         if drop_dark > 0:
             drop_text += f"• <b>{drop_dark} extremely dark frames</b> (brightness < 80, representing {stats['dark_pct']:.1f}% of dataset)"
 
@@ -1156,17 +1202,33 @@ def _add_quality_dashboard(story, analysis_data, temp_dir, heading_style, subhea
     else:
         story.append(Paragraph("✅ No frames need to be dropped based on quality metrics.", normal_style))
 
-    story.append(Spacer(1, 0.3*inch))
+    # Add green message if no blurry samples
+    if blurry_count == 0:
+        no_blurry_style = ParagraphStyle('NoBlurry', parent=normal_style,
+                                        fontSize=11, fontName='Helvetica-Bold',
+                                        textColor=colors.HexColor('#388e3c'))
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph("✅ No blurry frames detected - all frames have acceptable sharpness!", no_blurry_style))
 
-    # Blurry images montage section
+    story.append(PageBreak())
+
+
+def _add_blurry_samples(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality):
+    """Page 3: Blurry Frames Visual Examples (only if blurry frames exist)"""
+    stats = analysis_data['summary_stats']
+    blurry_count = stats['blurry_count']
+
     blurry_montage_path_png = temp_dir / "blurry_images_montage.png"
-    if blurry_montage_path_png.exists() and drop_blurry > 0:
+    # Double check: file exists AND we have blurry frames (defensive against file system race conditions)
+    if blurry_montage_path_png.exists() and blurry_count > 0:
+        story.append(Paragraph("Blurry Frames - Visual Examples", heading_style))
+        story.append(Spacer(1, 0.1*inch))
+
         blurry_montage_path = compress_image_for_pdf(blurry_montage_path_png, quality=image_quality)
-        story.append(Paragraph("Sample Blurry Frames (Low Sharpness)", subheading_style))
         story.append(Paragraph(
-            f"Below are up to {min(20, drop_blurry)} sample blurry frames that should be reviewed for removal. "
+            f"Below are up to {min(20, blurry_count)} sample blurry frames that should be reviewed for removal. "
             f"These frames have motion blur, out-of-focus issues, or camera shake. "
-            f"Sharpness and brightness values are shown below each image.",
+            f"Anisotropy (motion blur metric) and brightness values are shown below each image.",
             normal_style
         ))
         story.append(Spacer(1, 0.15*inch))
@@ -1187,9 +1249,10 @@ def _add_quality_dashboard(story, analysis_data, temp_dir, heading_style, subhea
                 img = RLImage(str(blurry_montage_path), width=max_width, height=scaled_height)
                 story.append(img)
             else:
-                # Split at row boundaries (use actual grid_cols from blurry montage)
+                # Split at row boundaries (use actual grid_cols and cache limit from config)
                 grid_cols = analysis_data.get('grid_cols_blurry', 4)
-                num_images = drop_blurry
+                cache_blurry_num_samples = analysis_data.get('cache_blurry_num_samples', 24)
+                num_images = min(blurry_count, cache_blurry_num_samples)  # Actual samples cached in montage
                 num_rows = (num_images + grid_cols - 1) // grid_cols
 
                 # Calculate height per row
@@ -1249,11 +1312,11 @@ def _add_quality_dashboard(story, analysis_data, temp_dir, heading_style, subhea
                 del blurry_img_obj
                 gc.collect()
 
-    story.append(PageBreak())
+        story.append(PageBreak())
 
 
 def _add_diversity_analysis(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality):
-    """Page 3: Diversity Analysis"""
+    """Page 4: Diversity Analysis (or Page 3 if no blurry samples)"""
     story.append(Paragraph("Frame Diversity Analysis", heading_style))
     story.append(Spacer(1, 0.1*inch))
 
@@ -1307,7 +1370,8 @@ def _add_diversity_analysis(story, analysis_data, temp_dir, heading_style, subhe
 
 
 def _add_activity_examples(story, analysis_data, temp_dir, heading_style, subheading_style, normal_style, image_quality):
-    """Page 4: Activity Visual Examples"""
+    """Page 4: Activity Visual Examples (starts on fresh page)"""
+    story.append(PageBreak())
     story.append(Paragraph("Activity Visual Examples", heading_style))
     story.append(Spacer(1, 0.1*inch))
 
@@ -1350,9 +1414,10 @@ def _add_activity_examples(story, analysis_data, temp_dir, heading_style, subhea
                     img = RLImage(str(montage_path), width=max_width, height=scaled_height)
                     story.append(img)
                 else:
-                    # Split at row boundaries (use actual grid_cols from activity montage)
+                    # Split at row boundaries (use actual grid_cols and max_samples from config)
                     grid_cols = analysis_data.get('grid_cols_activities', 4)
-                    num_images = min(count, 12)  # max_samples for inline display
+                    activity_num_samples = analysis_data.get('activity_num_samples', 20)
+                    num_images = min(count, activity_num_samples)  # Actual samples used in montage
                     num_rows = (num_images + grid_cols - 1) // grid_cols
 
                     row_height_px = img_height / num_rows
@@ -1440,9 +1505,10 @@ def _add_activity_examples(story, analysis_data, temp_dir, heading_style, subhea
                     img = RLImage(str(montage_path), width=max_width, height=scaled_height)
                     story.append(img)
                 else:
-                    # Split at row boundaries (use actual grid_cols from activity montage)
+                    # Split at row boundaries (use actual grid_cols and outliers_num_samples from config)
                     grid_cols = analysis_data.get('grid_cols_activities', 4)
-                    num_images = min(n_noise, 20)  # max_samples for outliers
+                    outliers_num_samples = analysis_data.get('outliers_num_samples', 50)
+                    num_images = min(n_noise, outliers_num_samples)  # Actual samples used in outlier montage
                     num_rows = (num_images + grid_cols - 1) // grid_cols
 
                     row_height_px = img_height / num_rows
@@ -1768,13 +1834,13 @@ def main():
 
     anisotropy_threshold = 3.6  # Directional gradient anisotropy threshold for motion blur detection. Greater than this are blurry frames
 
-    n_components = 64 # For Clustering, UMAP
-    min_cluster_size = 15 # For clustering, An activity must last at least ~n frames to exist
+    n_components = 32 # For Clustering, UMAP
+    min_cluster_size = 15 # For clustering, An activity must at least ~n frames to exist
     min_samples = 5 # For clustering, Determines how many neighbors a point needs to be considered a "core point". Edge frames are allowed to stay in cluster
 
     cache_blurry_num_samples = 24 # Blurry samples to be shown
     activity_num_samples = 20 # Number of samples to be shown per each activity
-    outliers_num_samples = 20 # Number of samples to be shown of Outliers
+    outliers_num_samples = 52 # Number of samples to be shown of Outliers
     pdf_image_quality = 70  # JPEG quality for images (1-100). Lower = smaller file.
 
     grid_cols_activities = 4  # Grid columns for activity montages
@@ -1786,7 +1852,13 @@ def main():
 
     model_name = "google/siglip-base-patch16-224"  # Fast (1.4 min/10K frames) + 768d embeddings
     # siglip-base-patch16-384 --- smaller model ~25% quality
-    # google/siglip-so400m-patch14-384 --- heavier model ~40% quality
+
+    # Set random seed for reproducibility (same frames = same report every time)
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
 
     # Setup
     frames_root = Path(frames_dir)
@@ -1806,7 +1878,7 @@ def main():
     else:
         print("Using CPU - GPU not available")
 
-    # Load SigLIP vision model from Hugging Face (cached to models/ folder)
+    # Load SigLIP vision model from Hugging Face
     print(f"\nLoading SigLIP vision model from Hugging Face: {model_name} ...")
     processor = AutoProcessor.from_pretrained(model_name)
     model = SiglipVisionModel.from_pretrained(model_name).to(device)
@@ -1835,10 +1907,13 @@ def main():
     print(f"✅ Using batch size {yolo_batch_size} for YOLO inference.")
     frame_data = detect_persons_and_extract_poses(image_paths, pose_model, device, conf_threshold=yolo_conf_person_thr, yolo_batch_size=yolo_batch_size)
 
-    # Count frames with persons
+    # Count frames with persons and max persons per frame
     frames_with_persons = sum(1 for f in frame_data if f['has_persons'])
     frames_without_persons = len(image_paths) - frames_with_persons
+    max_persons_in_frame = max((len(f['persons']) for f in frame_data), default=0)
+
     print(f"\n  ✅ Found persons in {frames_with_persons}/{len(image_paths)} frames")
+    print(f"  ℹ️  Max persons in single frame: {max_persons_in_frame}")
     if frames_without_persons > 0:
         print(f"  ℹ️  {frames_without_persons} frames without persons will use scene-only embeddings")
 
@@ -1858,6 +1933,11 @@ def main():
     # Map valid_frame_indices to valid frame_data for quality metrics
     valid_frame_data = [frame_data[i] for i in valid_frame_indices]
     valid_paths = [f['path'] for f in valid_frame_data]  # Extract paths for later use
+
+    # Recalculate person stats for VALID frames only (exclude corrupted/failed frames)
+    frames_with_persons = sum(1 for f in valid_frame_data if f['has_persons'])
+    max_persons_in_frame = max((len(f['persons']) for f in valid_frame_data), default=0)
+    print(f"\n  ℹ️  Person stats (valid frames only): {frames_with_persons}/{len(valid_frame_data)} frames with persons, max {max_persons_in_frame} persons/frame")
 
     # STEP 4: COMPUTE QUALITY METRICS (reuses pre-loaded images from frame_data)
     print("\n" + "="*60)
@@ -2064,12 +2144,17 @@ def main():
         'anisotropy_threshold': anisotropy_threshold,
         'grid_cols_activities': grid_cols_activities,
         'grid_cols_blurry': grid_cols_blurry,
+        'activity_num_samples': activity_num_samples,
+        'outliers_num_samples': outliers_num_samples,
+        'cache_blurry_num_samples': cache_blurry_num_samples,
         'recommendations': recommendations,
         'cluster_quality': cluster_quality,
         'summary_stats': {
             'total_frames': len(image_paths),
             'valid_frames': len(valid_paths),
             'n_activities': n_activities,
+            'frames_with_persons': frames_with_persons,
+            'max_persons_in_frame': max_persons_in_frame,
             'dark_count': dark_count,
             'dark_pct': dark_pct,
             'medium_count': medium_count,
