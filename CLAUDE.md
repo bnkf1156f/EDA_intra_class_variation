@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an **intra-class variation analysis pipeline** for object detection datasets. It analyzes class heterogeneity using DINOv2 embeddings and clustering to discover sub-groups and outliers.
 
 **Three pipeline modes:**
-- **Pre-annotation**: Analyzes raw frames BEFORE annotation to assess quality/diversity (prevents wasting annotation effort)
-- **Pre-training**: Analyzes annotated dataset AFTER annotation, before model training (uses YOLO annotation .txt files)
-- **Post-training**: Analyzes trained YOLOv8 model detections on video (validates model quality)
+- **Pre-annotation**: Analyzes raw frames BEFORE annotation to assess quality/diversity (uses SigLIP embeddings)
+- **Pre-training**: Analyzes annotated dataset AFTER annotation, before model training (uses DINOv2 embeddings + YOLO annotation .txt files)
+- **Post-training**: Analyzes trained YOLOv8 model detections on video (uses DINOv2 embeddings, validates model quality)
 
 ## Core Principles
 - **Keep it simple** - This is exploratory EDA, not production code
@@ -20,9 +20,9 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `1. master_script_dinov2_PreAnnotate.py` | **Pre-annotation**: Frame quality assessment with PDF report | BEFORE annotation |
-| `1. master_script_dinov2_pretrain.py` | Automated pre-training pipeline | AFTER annotation |
-| `1. master_script_dinov2_posttrain.py` | Automated post-training pipeline | AFTER model training |
+| `1. master_script_SigLip_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses SigLIP) | BEFORE annotation |
+| `1. master_script_dinov2_PostAnn_PreTrain.py` | Automated pre-training pipeline (uses DINOv2) | AFTER annotation |
+| `1. master_script_dinov2_PostTrain.py` | Automated post-training pipeline (uses DINOv2) | AFTER model training |
 | `postannotation_scripts/1. ann_txt_files_crop_bbox.py` | Pre-training: Extract crops from YOLO annotations | Part of pretrain pipeline |
 | `postannotation_scripts/1. yolo_model_crop_bbox_per_class.py` | Post-training: Extract crops from model detections | Part of posttrain pipeline |
 | `postannotation_scripts/2. save_dinov2_embeddings_per_class.py` | Generate DINOv2 embeddings | Part of both pipelines |
@@ -34,14 +34,14 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 ### Automated (Recommended)
 ```bash
-# PRE-ANNOTATION: Frame quality assessment (BEFORE annotation)
-python "1. master_script_dinov2_PreAnnotate.py"
+# PRE-ANNOTATION: Frame quality assessment (BEFORE annotation, uses SigLIP)
+python "1. master_script_SigLip_PreAnn.py"
 
-# PRE-TRAINING: Intra-class analysis (AFTER annotation, before training)
-python "1. master_script_dinov2_pretrain.py"
+# PRE-TRAINING: Intra-class analysis (AFTER annotation, before training, uses DINOv2)
+python "1. master_script_dinov2_PostAnn_PreTrain.py"
 
-# POST-TRAINING: Model detection analysis (AFTER model training)
-python "1. master_script_dinov2_posttrain.py"
+# POST-TRAINING: Model detection analysis (AFTER model training, uses DINOv2)
+python "1. master_script_dinov2_PostTrain.py"
 ```
 
 Configure global variables at the top of `main()` in each master script before running.
@@ -50,8 +50,8 @@ Configure global variables at the top of `main()` in each master script before r
 
 **Pre-annotation workflow** (raw frames → quality PDF):
 ```bash
-# Single script, no steps - directly outputs PDF
-python "1. master_script_dinov2_PreAnnotate.py"
+# Single script, no steps - directly outputs PDF (uses SigLIP embeddings)
+python "1. master_script_SigLip_PreAnn.py"
 ```
 
 **Pre-training workflow** (annotated images → clustering):
@@ -83,9 +83,9 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" --model mod
 Input: Raw frames (.png, .jpg, .jpeg)
     |
     v
-[1. master_script_dinov2_PreAnnotate.py]
-    - Person detection (YOLOv8-pose)
-    - DINOv2 embeddings (adaptive: pose+scene OR scene-only)
+[1. master_script_SigLip_PreAnn.py]
+    - Person detection (YOLOv11-pose)
+    - SigLIP embeddings (adaptive: 90% scene weight + 10% pose weight when persons detected)
     - Activity clustering (UMAP + HDBSCAN)
     - Quality metrics (brightness, sharpness, contrast, anisotropy)
     - Lighting categorization
@@ -96,7 +96,7 @@ Output: PreAnnotation_Quality_Report.pdf (5 pages)
     - Executive summary with quality score
     - Quality metrics dashboard
     - Activity diversity analysis with UMAP
-    - Visual montages (12 samples per activity)
+    - Visual montages (N samples per activity)
     - Coverage gap heatmap
 ```
 
@@ -124,7 +124,9 @@ Input (annotated images OR video+model)
 ```
 
 ### Key Data Structures
-- **Embeddings**: 768-dimensional vectors from `facebook/dinov2-base`
+- **Embeddings**:
+  - Pre-annotation: 768-dimensional vectors from `google/siglip-base-patch16-224`
+  - Pre/Post-training: 768-dimensional vectors from `facebook/dinov2-base`
 - **Image mapping**: `embeddings_dinov2_image_list.txt` maintains alignment between embeddings and source images
 - **YOLO format**: `class_id x_center y_center width height` (normalized coordinates)
 
@@ -147,11 +149,11 @@ Input (annotated images OR video+model)
 
 ## Key Parameters
 
-### Pre-Annotation Script (1. master_script_dinov2_PreAnnotate.py)
+### Pre-Annotation Script (1. master_script_SigLip_PreAnn.py)
 - `frames_dir`: Root directory with extracted frame images
 - `anisotropy_threshold`: Motion blur detection threshold (2.5 strict, 3.6 balanced, 5.0 lenient)
 - `use_embedding_cache`: Cache embeddings to disk for faster re-runs (True recommended)
-- `batch_size`: DINOv2 inference batch size (default 64)
+- `batch_size`: SigLIP inference batch size (default 64)
 - `cache_blurry_num_samples`: Number of blurry sample images to show in PDF (default 24)
 - `grid_cols_activities`: Grid columns for activity montages (default 3)
 - `grid_cols_blurry`: Grid columns for blurry sample montage (default 3)
@@ -171,15 +173,17 @@ Input (annotated images OR video+model)
 ## Known Quirks
 
 ### Pre-Annotation Script
-1. **Activity Clustering**: Uses UMAP (n_components dims) + HDBSCAN (density-based clustering), NOT hierarchical clustering or PCA
-2. **Adaptive Embeddings**:
-   - Frames WITH persons: 70% scene (768d) + 30% lightweight pose features (24d) = 792 total dims
-   - Frames WITHOUT persons: 100% scene embeddings (768d) + zero-padded pose (24d) = 792 total dims
-3. **Visual Montages**: Creates configurable grid (default 3 columns) with variable sample counts per activity
-4. **Lighting Thresholds**: Fixed thresholds (Dark <80, Medium 80-175, Bright >175) based on grayscale mean
-5. **Quality Score**: Computed from median brightness/anisotropy/contrast, scale 0-10 (lower anisotropy = sharper)
-6. **Motion Blur Detection**: Uses directional gradient anisotropy (Sobel X/Y energy ratio) instead of Laplacian variance
-7. **Person Detection**: Uses YOLOv11-pose (conf=0.3 default) to extract pose features when persons visible
+1. **Embedding Model**: Uses SigLIP (`google/siglip-base-patch16-224`) instead of DINOv2 for better multi-object understanding in cluttered frames
+2. **Activity Clustering**: Uses UMAP (n_components dims) + HDBSCAN (density-based clustering), NOT hierarchical clustering or PCA
+3. **Adaptive Embeddings**:
+   - Frames WITH persons: 90% scene weight (768d) + 10% lightweight pose features (24d) = 792 total dims
+   - Frames WITHOUT persons: 100% scene embeddings (768d) + zero-padded pose features (24d) = 792 total dims
+   - Weights applied to CONCATENATED dimensions (not blended scalars)
+4. **Visual Montages**: Creates configurable grid (default 3 columns) with variable sample counts per activity
+5. **Lighting Thresholds**: Fixed thresholds (Dark <80, Medium 80-175, Bright >175) based on grayscale mean
+6. **Quality Score**: Computed from median brightness/anisotropy/contrast, scale 0-10 (lower anisotropy = sharper)
+7. **Motion Blur Detection**: Uses directional gradient anisotropy (Sobel X/Y energy ratio) instead of Laplacian variance
+8. **Person Detection**: Uses YOLOv11-pose (conf=0.3 default) to extract pose features when persons visible
 
 ### Pre-Training/Post-Training Scripts
 1. **Image-Embedding Alignment**: Script 2 creates a mapping file with name derived from `--save_suffix` parameter (e.g., `embeddings_dinov2.npy` → `embeddings_dinov2_image_list.txt`). Script 3 must receive the same `--save_suffix` value or alignment will fail. The mapping file ensures correct correspondence even when corrupted images are skipped.
@@ -196,7 +200,7 @@ Input (annotated images OR video+model)
 ### Pre-Annotation Script
 - Output: `frame_analysis_results/PreAnnotation_Quality_Report.pdf`
 - Temp files: `temp_preannotation_charts/` (auto-cleaned after PDF generation)
-- Embedding files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ which should be deleted before next run!
+- Embedding files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (uses SigLIP embeddings, should be deleted before next run!)
 
 ### Pre-Training/Post-Training Scripts
 - Script 1a outputs: `{basename}_crop_{idx}.png` + `temp_ann_file.txt`
@@ -210,10 +214,11 @@ Input (annotated images OR video+model)
 ## Dependencies
 
 - PyTorch >= 2.1 with CUDA
-- ultralytics (YOLOv8)
-- transformers (DINOv2)
+- ultralytics (YOLOv8/YOLOv11)
+- transformers (SigLIP for pre-annotation, DINOv2 for pre/post-training)
 - scikit-learn (DBSCAN)
-- umap-learn
+- umap-learn (pre-annotation clustering)
+- hdbscan (pre-annotation clustering)
 - opencv-python, pillow, numpy, pandas, matplotlib, seaborn, psutil, tqdm
 - reportlab (for PDF generation in Script 4)
 

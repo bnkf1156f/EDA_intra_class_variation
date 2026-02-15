@@ -6,10 +6,10 @@
 
 ## Pipeline Overview --- PRE-ANNOTATION (Frame Quality Assessment)
 
-**NEW**: Analyze frame quality **BEFORE sending to annotators** to ensure annotation effort is worthwhile.
+Analyze frame quality **BEFORE sending to annotators** to ensure annotation effort is worthwhile.
 
 1. **Scan Frames**: Load raw frame images (no annotations needed)
-2. **DINOv2 Embeddings**: Generate semantic representations
+2. **SigLIP Embeddings**: Generate semantic representations (better for multi-object scenes)
 3. **Activity Clustering**: Discover different scenarios/activities in frames
 4. **Quality Metrics**: Analyze brightness, contrast, motion blur
 5. **PDF Report**: Generate comprehensive quality assessment with visual montages
@@ -40,7 +40,7 @@ Three master scripts are provided: one for **pre-annotation** frame quality asse
 
 ---
 
-### Script: 1. master_script_dinov2_PreAnnotate.py
+### Script: 1. master_script_SigLip_PreAnn.py
 **PRE-ANNOTATION Frame Quality Assessment** - Validate frames BEFORE sending to annotators
 
 #### Purpose
@@ -56,14 +56,14 @@ Helps engineers assess whether extracted frames are worthy of annotation effort 
 - 🎯 **Activity Clustering**: Automatically groups frames by semantic similarity (different scenarios)
 - 📊 **Quality Metrics**: Brightness, contrast, motion blur analysis
 - 🖼️ **Visual Montages**: See sample images per activity cluster in PDF
-- 🧠 **Adaptive Embeddings**: Uses pose features when persons detected, scene-only otherwise
+- 🧠 **Adaptive Embeddings**: Uses SigLIP (90% scene weight) + pose features (10% weight) when persons detected
 - 📄 **PDF Report**: n-page comprehensive quality assessment
 - ⚠️ **Drop Recommendations**: Which frames to remove before annotation
 
 #### Quick Start
 ```bash
 # Edit global variables in script, then run:
-python "1. master_script_dinov2_PreAnnotate.py"
+python "1. master_script_SigLip_PreAnn.py"
 ```
 
 #### Configuration Variables
@@ -71,7 +71,7 @@ Edit these at the top of `main()` function:
 
 ```python
 frames_dir = r"D:\Your\Frames\Folder"  # Root directory with extracted frames
-batch_size = 64  # DINOv2 batch size
+batch_size = 64  # Embedding batch size
 anisotropy_threshold = 3.6  # Motion blur detection threshold (gradient anisotropy)
 output_dir = "frame_analysis_results"
 pdf_name = "PreAnnotation_Quality_Report.pdf"
@@ -150,7 +150,7 @@ A semantically distinct group of frames representing:
 
 **How to Validate**:
 1. Check Page 4 montages
-2. **Good clustering**: All 12 images in Activity 0 montage show similar scenario
+2. **Good clustering**: All N images in Activity 0 montage show similar scenario
 3. **Poor clustering**: Montage shows mixed unrelated scenarios
 4. **Fix**: Adjust `distance_threshold` (lower for stricter grouping)
 
@@ -165,8 +165,8 @@ Activity 1 montage: [6 welding, 3 drilling, 3 inspection mixed together] ❌
 1. **Run script** with default settings
 2. **Review PDF Page 1**: Check quality score and recommendations
 3. **Review PDF Page 2**: Identify motion-blurred/dark frames to drop
-4. **Review PDF Page 4**: Validate activity montages look correct
-5. **Review PDF Page 5**: Check for coverage gaps
+4. **Review PDF Page 4-M**: Validate activity montages look correct
+5. **Review PDF Page M+1-N**: Check for coverage gaps
 6. **Take action**:
    - Drop blurry frames (anisotropy > threshold)
    - Extract more frames from diverse videos if only 1-2 activities
@@ -194,13 +194,13 @@ Coverage gaps: Activity 3 has no bright lighting frames
 
 #### Output Structure
 ```
-frame_analysis_results/
+frame_analysis_results_*/
 └── PreAnnotation_Quality_Report.pdf
 ```
 
 ---
 
-### Script: 1. master_script_pretrain.py
+### Script: 1. master_script_dinov2_PostAnn_PreTrain.py
 **Automated PRE-TRAINING pipeline** - Analyzes annotated dataset before model training
 
 #### Features
@@ -214,7 +214,7 @@ frame_analysis_results/
 #### Quick Start
 ```bash
 # Edit global variables in script, then run:
-python "1. master_script_dinov2_pretrain.py"
+python "1. master_script_dinov2_PostAnn_PreTrain.py"
 ```
 
 #### Configuration Variables
@@ -260,7 +260,7 @@ pdf_name = "PDF_REPORT"
 
 ---
 
-### Script: 1. master_script_dinov2_posttrain.py
+### Script: 1. master_script_dinov2_PostTrain.py
 **Automated POST-TRAINING pipeline** - Analyzes trained model detections on a test video
 
 #### Features
@@ -272,7 +272,7 @@ Same as pre-training script, plus:
 #### Quick Start
 ```bash
 # Edit global variables in script, then run:
-python "1. master_script_dinov2_posttrain.py"
+python "1. master_script_dinov2_PostTrain.py"
 ```
 
 #### Configuration Variables
@@ -294,7 +294,7 @@ max_cluster_samples = "5"
 
 #### Pipeline Steps
 1. **Detection & Cropping** (`postannotation_scripts/1. yolo_model_crop_bbox_per_class.py`)
-   - Runs YOLOv8 inference on video
+   - Runs YOLO inference on video
    - Applies frame stride (e.g., every 3rd frame)
    - Smart sampling: uniformly extracts target number of crops per class
    - **⚠️ Most time-consuming step** (10-15 minutes for 20-min video)
@@ -805,7 +805,7 @@ pip install plotly
 ### Pre-Training Analysis (Automated)
 ```bash
 # Recommended: Use master script
-python "1. master_script_pretrain.py"
+python "1. master_script_dinov2_PostAnn_PreTrain.py"
 
 # Edit these variables in the script before running:
 # - imgs_label_path
@@ -835,7 +835,7 @@ python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
 ### Post-Training Analysis (Automated)
 ```bash
 # Recommended: Use master script
-python "1. master_script_dinov2_posttrain.py"
+python "1. master_script_dinov2_PostTrain.py"
 
 # Edit these variables in the script before running:
 # - model_path
@@ -862,9 +862,9 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
 
 | Script | Input | Output | Purpose | When to Use |
 |--------|-------|--------|---------|-------------|
-| **1. master_script_dinov2_PreAnnotate.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** | BEFORE annotation |
-| **1. master_script_dinov2_pretrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** | AFTER annotation |
-| **1. master_script_dinov2_posttrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** | AFTER model training |
+| **1. master_script_SigLip_PreAnn.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** (uses SigLIP) | BEFORE annotation |
+| **1. master_script_dinov2_PostAnn_PreTrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** (uses DINOv2) | AFTER annotation |
+| **1. master_script_dinov2_PostTrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** (uses DINOv2) | AFTER model training |
 | postannotation_scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection | After annotation |
 | postannotation_scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification | After training |
 | postannotation_scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations | Part of pipeline |
@@ -894,3 +894,4 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
 * DBSCAN Understanding: https://medium.com/@sachinsoni600517/clustering-like-a-pro-a-beginners-guide-to-dbscan-6c8274c362c4
 * YOLOv8 Embeddings: https://docs.ultralytics.com/modes/predict/#inference-arguments
 * Post-training Pipeline: https://medium.com/@albertferrevidal/facings-product-identifier-using-yolov8-and-image-embeddings-d3ca34463022
+* SigLIP: https://huggingface.co/docs/transformers/en/model_doc/siglip
