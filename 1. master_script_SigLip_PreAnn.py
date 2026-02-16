@@ -15,21 +15,23 @@ Embedding Strategy (SigLIP-base-224):
 - Total dimensionality: 792d (768 scene + 24 pose)
 
 Tuning Guide:
-    EMBEDDING WEIGHTS (lines 339-340 in compute_multiview_embeddings):
+    EMBEDDING WEIGHTS (lines 347-348 in compute_multiview_embeddings):
     - More scene-driven clustering (different scenes/objects/environments) => Increase scene_emb weight (0.9 → 0.95+)
     - More pose-driven clustering (different worker activities/postures) => Increase pose_features weight (0.1 → 0.15+)
     - Current: 90% scene weight + 10% pose weight (balanced for both environment and activity diversity)
 
     CLUSTERING GRANULARITY (in main):
-    - Want more fine-grained activity clusters => Increase n_components (8 → 16) OR decrease min_dist in UMAP
+    - Want more fine-grained activity clusters => Increase n_components (8 → 16)
     - Want broader activity grouping => Decrease n_components (8 → 4)
-    - Min frames per activity => Adjust min_cluster_size (50 → higher for stricter clustering)
-    - Cluster strictness (edge frame inclusion) => Adjust min_samples (5 → lower for looser, higher for stricter)
+    - Want to REDUCE OUTLIERS and TIGHTER PACKING of points (absorb edge points into clusters) => Decrease min_dist_umap (0.0)
+    - Min frames per activity => Adjust min_cluster_size (10 → higher for stricter clustering)
+    - Cluster strictness (edge frame inclusion) => Adjust min_samples (3 → lower for looser, higher for stricter)
+
 
     QUALITY THRESHOLDS (in main):
     - Blur detection sensitivity => anisotropy_threshold (3.6 → lower for stricter, higher for lenient) => >threshold are blur frames
 
-    PDF REPORT OPTIONS (lines 1755-1761 in main):
+    PDF REPORT OPTIONS (lines 1855-1861 in main):
     - Samples shown per activity => activity_num_samples (20 → adjust based on dataset size)
     - Blurry samples in report => cache_blurry_num_samples (24 → adjust for PDF length)
     - Grid layout for montages => grid_cols_activities (3), grid_cols_blurry (3)
@@ -334,10 +336,10 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
                 scene_emb = scene_embs[valid_idx]
 
                 if use_scene_only:
-                    # Scene-only mode: just use DINOv2 scene embeddings (768-dim)
+                    # Scene-only mode: just use SigLIP scene embeddings (768-dim)
                     multiview_embeddings.append(scene_emb)
                 elif batch_has_persons[batch_idx] and valid_idx in frame_pose_features_aggregates:
-                    # Frame with person: scene (85%) + lightweight pose features (15%)
+                    # Frame with person: scene (90%) + lightweight pose features (10%)
                     pose_features_agg = frame_pose_features_aggregates[valid_idx]
 
                     # Pre-allocate output array to avoid temporary allocations
@@ -449,7 +451,7 @@ def categorize_lighting(brightness_values):
     return lighting_labels
 
 
-def cluster_activities_with_umap_hdbscan(embeddings, n_components, min_cluster_size, min_samples):
+def cluster_activities_with_umap_hdbscan(embeddings, n_components, min_cluster_size, min_samples, n_neighbors, min_dist_umap):
     """
     Cluster frames by activity using UMAP + HDBSCAN (optimized parameters).
     Pipeline:
@@ -475,7 +477,7 @@ def cluster_activities_with_umap_hdbscan(embeddings, n_components, min_cluster_s
     # For spectral initialization, need n_components < n_samples - 1 AND n_components < n_neighbors
     max_components = min(embeddings.shape[0] - 2, embeddings.shape[1])  # -2 for safety margin
     n_components = min(n_components, max_components)
-    n_neighbors_umap = min(15, max(2, embeddings.shape[0] - 1))  # Ensure 2 <= n_neighbors < n_samples
+    n_neighbors_umap = min(n_neighbors, max(2, embeddings.shape[0] - 1))  # Ensure 2 <= n_neighbors < n_samples
 
     # Ensure n_components <= n_neighbors (UMAP requirement)
     n_components = min(n_components, n_neighbors_umap)
@@ -483,7 +485,7 @@ def cluster_activities_with_umap_hdbscan(embeddings, n_components, min_cluster_s
     reducer = umap.UMAP(
         n_components=n_components,
         n_neighbors=n_neighbors_umap,  # Adaptive to dataset size
-        min_dist=0.1,        # Minimum distance between points in low-dim space
+        min_dist=min_dist_umap,        # Minimum distance between points in low-dim space
         metric='euclidean',
         random_state=42
     )
@@ -491,14 +493,14 @@ def cluster_activities_with_umap_hdbscan(embeddings, n_components, min_cluster_s
     umap_embeddings = reducer.fit_transform(embeddings_scaled)
 
     print(f"  UMAP: Reduced {embeddings.shape[1]} dims → {n_components} dims")
-    print(f"        (n_neighbors={n_neighbors_umap}, min_dist=0.1)")
+    print(f"        (n_neighbors={n_neighbors_umap}, min_dist={min_dist_umap})")
 
     # 4. HDBSCAN clustering (optimized parameters for activity discovery)
     clusterer = HDBSCAN(
         min_cluster_size=min_cluster_size,  # Larger = more stable clusters
         min_samples=min_samples,            # Higher = stricter clustering
         metric='euclidean',
-        cluster_selection_method='leaf'      # prefers larger, flatter clusters
+        cluster_selection_method='eom'      # standard HDBSCAN algorithm which looks for broader, more stable clusters
     )
 
     activity_labels = clusterer.fit_predict(umap_embeddings)
@@ -876,42 +878,52 @@ def create_activity_montage(image_paths, activity_id, max_samples, grid_cols, ta
     n_images = len(resized_images)
     n_rows = (n_images + grid_cols - 1) // grid_cols
 
-    # Calculate montage dimensions (add 20px extra height per row for filename text)
+    # Calculate montage dimensions (add 30px extra height per row for filename text with background)
     max_img_width = max(img.width for img in resized_images)
     montage_width = max_img_width * grid_cols + 10 * (grid_cols + 1)  # 10px padding
-    montage_height = (target_height + 20) * n_rows + 10 * (n_rows + 1)  # Extra 20px for filename
+    montage_height = (target_height + 30) * n_rows + 10 * (n_rows + 1)  # Extra 30px for filename
 
     # Create montage canvas
     montage = PILImage.new('RGB', (montage_width, montage_height), color='white')
     draw = ImageDraw.Draw(montage)
 
-    # Load font for filenames
+    # Load font for filenames (bigger and bolder)
     try:
-        font = ImageFont.truetype("arial.ttf", 9)
+        font = ImageFont.truetype("arialbd.ttf", 11)  # Arial Bold 11pt
     except:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("arial.ttf", 11)  # Fallback to regular Arial
+        except:
+            font = ImageFont.load_default()  # Final fallback
 
     # Paste images with filenames
     for idx, (img, filename) in enumerate(zip(resized_images, filenames)):
         row = idx // grid_cols
         col = idx % grid_cols
         x = col * (max_img_width + 10) + 10
-        y = row * (target_height + 20 + 10) + 10
+        y = row * (target_height + 30 + 10) + 10
 
         # Paste image
         montage.paste(img, (x, y))
 
-        # Add filename below image (truncate if too long)
-        if len(filename) > 25:
-            filename_display = filename[:22] + "..."
-        else:
-            filename_display = filename
+        # Add filename below image with white background (show full filename)
+        filename_display = filename
 
+        # Calculate text position and background box
         text_bbox = draw.textbbox((0, 0), filename_display, font=font)
         text_width = text_bbox[2] - text_bbox[0]
-        text_x = x + (img.width - text_width) // 2
-        text_y = y + target_height + 3
+        text_height = text_bbox[3] - text_bbox[1]
 
+        text_x = x + (img.width - text_width) // 2
+        text_y = y + target_height + 5
+
+        # Draw white background rectangle with slight padding
+        padding = 3
+        bg_box = [text_x - padding, text_y - padding,
+                  text_x + text_width + padding, text_y + text_height + padding]
+        draw.rectangle(bg_box, fill='white', outline='lightgray', width=1)
+
+        # Draw filename text in black
         draw.text((text_x, text_y), filename_display, fill='black', font=font)
 
     return montage
@@ -1834,23 +1846,25 @@ def main():
 
     anisotropy_threshold = 3.6  # Directional gradient anisotropy threshold for motion blur detection. Greater than this are blurry frames
 
-    n_components = 32 # For Clustering, UMAP
-    min_cluster_size = 15 # For clustering, An activity must at least ~n frames to exist
-    min_samples = 5 # For clustering, Determines how many neighbors a point needs to be considered a "core point". Edge frames are allowed to stay in cluster
+    n_components = 16   # UMAP
+    min_cluster_size = 10   # For clustering, An activity must at least ~n frames to exist
+    min_samples = 3   # For clustering, Determines how many neighbors a point needs to be considered a "core point". Edge frames are allowed to stay in cluster
+    n_neighbors = 15   # UMAP: Local neighborhood size (higher = broader grouping, reduces outliers)
+    min_dist_umap = 0.0   # UMAP: Minimum distance in embedding space
 
-    cache_blurry_num_samples = 24 # Blurry samples to be shown
-    activity_num_samples = 20 # Number of samples to be shown per each activity
-    outliers_num_samples = 52 # Number of samples to be shown of Outliers
-    pdf_image_quality = 70  # JPEG quality for images (1-100). Lower = smaller file.
+    cache_blurry_num_samples = 24   # Blurry samples to be shown
+    activity_num_samples = 20   # Number of samples to be shown per each activity
+    outliers_num_samples = 52   # Number of samples to be shown of Outliers
+    pdf_image_quality = 70    # JPEG quality for images (1-100). Lower = smaller file.
 
-    grid_cols_activities = 4  # Grid columns for activity montages
-    grid_cols_blurry = 4  # Grid columns for blurry sample montage 
+    grid_cols_activities = 4    # Grid columns for activity montages
+    grid_cols_blurry = 4   # Grid columns for blurry sample montage 
 
-    output_dir = "frame_analysis_results_siglip_pose_emb"  # Output directory for results
-    pdf_name = "PreAnnotation_Quality_Report.pdf"  # Output PDF filename
-    use_embedding_cache = True  # Set to True to cache embeddings (recommended for large datasets >5000 frames)
+    output_dir = "frame_analysis_results_siglip_pose_emb"   # Output directory for results
+    pdf_name = "PreAnnotation_Quality_Report.pdf"   # Output PDF filename
+    use_embedding_cache = True   # Set to True to cache embeddings (recommended for large datasets >5000 frames)
 
-    model_name = "google/siglip-base-patch16-224"  # Fast (1.4 min/10K frames) + 768d embeddings
+    model_name = "google/siglip-base-patch16-224"   # Fast (1.4 min/10K frames) + 768d embeddings
     # siglip-base-patch16-384 --- smaller model ~25% quality
 
     # Set random seed for reproducibility (same frames = same report every time)
@@ -1954,7 +1968,7 @@ def main():
     print("\n" + "="*60)
     print("STEP 5: UMAP + HDBSCAN CLUSTERING")
     print("="*60)
-    activity_labels, umap_embeddings, cluster_quality = cluster_activities_with_umap_hdbscan(embeddings, n_components=n_components, min_cluster_size=min_cluster_size, min_samples=min_samples)
+    activity_labels, umap_embeddings, cluster_quality = cluster_activities_with_umap_hdbscan(embeddings, n_components=n_components, min_cluster_size=min_cluster_size, min_samples=min_samples, n_neighbors=n_neighbors, min_dist_umap=min_dist_umap)
 
     # Count activities (excluding noise)
     unique_activities = np.unique(activity_labels)

@@ -155,8 +155,20 @@ Input (annotated images OR video+model)
 - `use_embedding_cache`: Cache embeddings to disk for faster re-runs (True recommended)
 - `batch_size`: SigLIP inference batch size (default 64)
 - `cache_blurry_num_samples`: Number of blurry sample images to show in PDF (default 24)
-- `grid_cols_activities`: Grid columns for activity montages (default 3)
-- `grid_cols_blurry`: Grid columns for blurry sample montage (default 3)
+- `grid_cols_activities`: Grid columns for activity montages (default 4)
+- `grid_cols_blurry`: Grid columns for blurry sample montage (default 4)
+
+**UMAP + HDBSCAN Clustering Parameters:**
+- `n_components`: UMAP output dimensions (default 16, affects cluster granularity)
+- `min_cluster_size`: Minimum frames per activity cluster (default 10)
+- `min_samples`: HDBSCAN core point strictness (default 3, lower=looser)
+- `n_neighbors`: UMAP local neighborhood size (default 15)
+- `min_dist_umap`: UMAP minimum distance in embedding space (default 0.0 for tightest packing, reduces outliers)
+
+**Optimal settings (discovered 2026-02-16):**
+- Use `min_dist_umap = 0.0` for best outlier reduction (12-15% outliers vs 23-25% with 0.1)
+- Tighter UMAP packing improves clustering quality (higher Silhouette, lower Davies-Bouldin)
+- Don't increase `n_neighbors` or decrease `min_samples` - makes clustering worse
 
 ### Clustering (Script 3)
 - `--eps`: DBSCAN epsilon (0.1 strict, 0.15 balanced, 0.2-0.3 lenient)
@@ -179,7 +191,7 @@ Input (annotated images OR video+model)
    - Frames WITH persons: 90% scene weight (768d) + 10% lightweight pose features (24d) = 792 total dims
    - Frames WITHOUT persons: 100% scene embeddings (768d) + zero-padded pose features (24d) = 792 total dims
    - Weights applied to CONCATENATED dimensions (not blended scalars)
-4. **Visual Montages**: Creates configurable grid (default 3 columns) with variable sample counts per activity
+4. **Visual Montages**: Creates configurable grid (default 4 columns) with variable sample counts per activity
 5. **Lighting Thresholds**: Fixed thresholds (Dark <80, Medium 80-175, Bright >175) based on grayscale mean
 6. **Quality Score**: Computed from median brightness/anisotropy/contrast, scale 0-10 (lower anisotropy = sharper)
 7. **Motion Blur Detection**: Uses directional gradient anisotropy (Sobel X/Y energy ratio) instead of Laplacian variance

@@ -89,6 +89,16 @@ use_embedding_cache = True  # Cache embeddings for faster re-runs
 - `True`: **Recommended** - Saves embeddings to disk for faster re-runs
 - `False`: Recompute embeddings every time (slower)
 
+**UMAP + HDBSCAN Clustering Parameters** (Advanced):
+- `n_components`: UMAP output dimensions (default: 16) - Controls cluster granularity
+- `min_cluster_size`: Minimum frames to form an activity cluster (default: 10)
+- `min_samples`: Core point strictness in HDBSCAN (default: 3) - Lower = looser clustering
+- `n_neighbors`: UMAP local neighborhood size (default: 15) - Controls local vs global structure
+- `min_dist_umap`: **CRITICAL** - UMAP minimum distance (default: **0.0** recommended)
+  - `0.0`: Tightest packing, **12-15% outliers** (optimal quality, discovered 2026-02-16)
+  - `0.1`: Looser packing, 23-25% outliers (worse clustering quality)
+  - Lower values = denser clusters = better HDBSCAN performance = fewer outliers
+
 #### PDF Report Structure (5 Pages)
 
 **Page 1: Executive Summary**
