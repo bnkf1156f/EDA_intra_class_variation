@@ -61,6 +61,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 import shutil
 import time
+import questionary
 from ultralytics import YOLO
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 matplotlib.use('Agg')  # Non-interactive backend
@@ -1836,36 +1837,70 @@ def _add_coverage_analysis(story, analysis_data, temp_dir, heading_style, normal
 
 
 ## ---------------------------------- MAIN PIPELINE -----------------------------------------
+def _prompt_required(message):
+    """Prompt until user provides a non-empty value."""
+    while True:
+        val = questionary.text(message).ask()
+        if val and val.strip():
+            return val.strip()
+        print("   ⚠️  This field is required, please enter a value.")
+
+
+def _prompt_default(message, default):
+    """Prompt with a default — pressing Enter keeps the default."""
+    val = questionary.text(f"{message} (default: {default})", default=str(default)).ask()
+    return val.strip() if val and val.strip() else str(default)
+
+
 def main():
-    # GLOBAL CONFIGURATION
-    frames_dir = r"path/to/frames"  # Root directory with extracted frames (replace with your path)
-    
-    yolo_batch_size = 8   # YOLO pose detection batch size
-    yolo_conf_person_thr = 0.3 # YOLO pose detection confidence threshold
-    batch_size = 64       # Embedding inference batch size
+    print("="*60)
+    print("PRE-ANNOTATION FRAME QUALITY ASSESSMENT PIPELINE")
+    print("="*60)
 
-    anisotropy_threshold = 3.6  # Directional gradient anisotropy threshold for motion blur detection. Greater than this are blurry frames
+    ## -----------------------------------------------##
+    ##   REQUIRED INPUTS (prompted, no defaults)       ##
+    ## -----------------------------------------------##
+    print("\n📁  STEP 0: CONFIGURE PIPELINE INPUTS")
+    print("="*60)
 
-    n_components = 16   # UMAP
-    min_cluster_size = 10   # For clustering, An activity must at least ~n frames to exist
-    min_samples = 3   # For clustering, Determines how many neighbors a point needs to be considered a "core point". Edge frames are allowed to stay in cluster
-    n_neighbors = 15   # UMAP: Local neighborhood size (higher = broader grouping, reduces outliers)
-    min_dist_umap = 0.0   # UMAP: Minimum distance in embedding space
+    frames_dir = _prompt_required("Path to frames folder")
 
-    cache_blurry_num_samples = 24   # Blurry samples to be shown
-    activity_num_samples = 20   # Number of samples to be shown per each activity
-    outliers_num_samples = 52   # Number of samples to be shown of Outliers
-    pdf_image_quality = 70    # JPEG quality for images (1-100). Lower = smaller file.
+    if not Path(frames_dir).exists():
+        raise RuntimeError(f"Frames directory does not exist: {frames_dir}")
 
-    grid_cols_activities = 4    # Grid columns for activity montages
-    grid_cols_blurry = 4   # Grid columns for blurry sample montage 
+    ## -----------------------------------------------##
+    ##   OPTIONAL PARAMETERS (Enter = keep default)   ##
+    ## -----------------------------------------------##
+    print("\n⚙️   PARAMETERS  (press Enter to keep default)\n")
 
-    output_dir = "frame_analysis_results_siglip_pose_emb"   # Output directory for results
-    pdf_name = "PreAnnotation_Quality_Report.pdf"   # Output PDF filename
-    use_embedding_cache = True   # Set to True to cache embeddings (recommended for large datasets >5000 frames)
+    yolo_batch_size      = int(_prompt_default("YOLO pose detection batch size", 8))
+    yolo_conf_person_thr = float(_prompt_default("YOLO pose detection confidence threshold", 0.3))
+    batch_size           = int(_prompt_default("SigLIP embedding batch size", 64))
 
+    anisotropy_threshold = float(_prompt_default("Motion blur anisotropy threshold (lower=stricter)", 3.6))
+
+    n_components      = int(_prompt_default("UMAP output dimensions (higher=finer clusters)", 16))
+    min_cluster_size  = int(_prompt_default("Min frames per activity cluster", 10))
+    min_samples       = int(_prompt_default("HDBSCAN min_samples (lower=looser)", 3))
+    n_neighbors       = int(_prompt_default("UMAP n_neighbors", 15))
+    min_dist_umap     = float(_prompt_default("UMAP min_dist (0.0=tightest packing)", 0.0))
+
+    cache_blurry_num_samples = int(_prompt_default("Blurry samples shown in PDF", 24))
+    activity_num_samples     = int(_prompt_default("Samples shown per activity", 20))
+    outliers_num_samples     = int(_prompt_default("Samples shown for outliers", 52))
+    pdf_image_quality        = int(_prompt_default("PDF image JPEG quality (1-100)", 70))
+
+    grid_cols_activities = int(_prompt_default("Grid columns for activity montages", 4))
+    grid_cols_blurry     = int(_prompt_default("Grid columns for blurry montage", 4))
+
+    output_dir           = _prompt_default("Output directory for results", "frame_analysis_results_siglip_pose_emb")
+    pdf_name             = _prompt_default("Output PDF filename", "PreAnnotation_Quality_Report.pdf")
+    use_embedding_cache  = _prompt_default("Use embedding cache? (True/False)", True).lower() == "true"
+
+    # Model Name for Embedding
     model_name = "google/siglip-base-patch16-224"   # Fast (1.4 min/10K frames) + 768d embeddings
-    # siglip-base-patch16-384 --- smaller model ~25% quality
+
+    print("\n" + "="*60)
 
     # Set random seed for reproducibility (same frames = same report every time)
     random.seed(42)

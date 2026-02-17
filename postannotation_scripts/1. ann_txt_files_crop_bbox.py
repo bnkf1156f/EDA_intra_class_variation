@@ -1,11 +1,22 @@
 """
 Annotation TXT Files → Cropped Bounding Box Images by Class
 
-This script processes a folder containing YOLO-format labelled images (.png/.jpg and .txt pairs), and extracts cropped object images from bounding boxes for specified class IDs.
+This script processes YOLO-format labelled images (.png/.jpg and .txt pairs), and extracts
+cropped object images from bounding boxes for specified class IDs.
 
-Usage:
-    python ann_txt_files_crop_bbox.py \
+Images and labels can be in the same folder or separate folders.
+
+Usage (same folder):
+    python "ann_txt_files_crop_bbox.py" \
         --imgs_label_path "path/to/LabelledData" \
+        --classes 0 1 2 \
+        --class_ids_to_names 0 class0 1 class1 2 class2 \
+        --output_dir cropped_imgs_by_class
+
+Usage (separate folders):
+    python "ann_txt_files_crop_bbox.py" \
+        --imgs_path "path/to/images" \
+        --label_path "path/to/labels" \
         --classes 0 1 2 \
         --class_ids_to_names 0 class0 1 class1 2 class2 \
         --output_dir cropped_imgs_by_class
@@ -31,32 +42,44 @@ def yolo_to_bbox(x_center, y_center, width, height, img_width, img_height):
     y_center_abs = y_center * img_height
     width_abs = width * img_width
     height_abs = height * img_height
-    
+
     x1 = int(x_center_abs - width_abs / 2)
     y1 = int(y_center_abs - height_abs / 2)
     x2 = int(x_center_abs + width_abs / 2)
     y2 = int(y_center_abs + height_abs / 2)
-    
+
     return x1, y1, x2, y2
 
 def main():
     p = argparse.ArgumentParser(description="Labelled Frames -> sampled cropped images by class")
-    p.add_argument("--imgs_label_path", required=True, help="Path to Images+Labels Path")
+    p.add_argument("--imgs_label_path", help="Path containing both images AND labels (use this OR --imgs_path + --label_path)")
+    p.add_argument("--imgs_path", help="Path to images folder (use with --label_path for separate folders)")
+    p.add_argument("--label_path", help="Path to labels folder (use with --imgs_path for separate folders)")
     p.add_argument("--classes", nargs="+", required=True, help="Class IDs required")
     p.add_argument("--class_ids_to_names", nargs="+", required=True, help="Pairs of class_id class_name (e.g. 0 class0 1 class1 2 class2)")
     p.add_argument("--output_dir", default="cropped_imgs_by_class", help="Output Directory to store cropped images")
     p.add_argument("--output_txt_file", help="Temporary TXT file to store details for PDF generation at the end")
     args = p.parse_args()
 
-    dataset_path = args.imgs_label_path
-    if not os.path.exists(dataset_path):
-        raise OSError(f"DATASET PATH DOESN'T EXIST here: {dataset_path}")
+    # Resolve imgs_dir and label_dir
+    if args.imgs_label_path:
+        imgs_dir = args.imgs_label_path
+        label_dir = args.imgs_label_path
+    elif args.imgs_path and args.label_path:
+        imgs_dir = args.imgs_path
+        label_dir = args.label_path
+    else:
+        raise ValueError("Provide either --imgs_label_path OR both --imgs_path and --label_path")
+
+    for path, name in [(imgs_dir, "imgs"), (label_dir, "label")]:
+        if not os.path.exists(path):
+            raise OSError(f"{name.upper()} PATH DOESN'T EXIST: {path}")
     
     print("\n------------------------------------------------------------")
     print("|                     CHECKING DATASET                     |")
     print("------------------------------------------------------------")
-    img_files = [f for f in os.listdir(dataset_path) if f.endswith((".png", ".jpg", ".jpeg"))]
-    txt_files = [f for f in os.listdir(dataset_path) if f.endswith(".txt")]
+    img_files = [f for f in os.listdir(imgs_dir) if f.endswith((".png", ".jpg", ".jpeg"))]
+    txt_files = [f for f in os.listdir(label_dir) if f.endswith(".txt")]
     missing_txts = []
     for img in img_files:
         base_name = os.path.splitext(img)[0]
@@ -108,7 +131,7 @@ def main():
     for txt_file in txt_files:
         if txt_file == "classes.txt":
             continue
-        txt_path = os.path.join(dataset_path, txt_file)
+        txt_path = os.path.join(label_dir, txt_file)
         with open(txt_path, 'r') as f:
             lines = f.readlines()
 
@@ -207,7 +230,7 @@ def main():
         if txt_file == "classes.txt":
             continue
 
-        txt_path = os.path.join(dataset_path, txt_file)
+        txt_path = os.path.join(label_dir, txt_file)
 
         # Find corresponding image
         base_name = os.path.splitext(txt_file)[0]
@@ -221,7 +244,7 @@ def main():
         if not img_file:
             continue
         
-        img_path = os.path.join(dataset_path, img_file)
+        img_path = os.path.join(imgs_dir, img_file)
         img = cv2.imread(img_path)
 
         if img is None:

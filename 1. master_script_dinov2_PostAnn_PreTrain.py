@@ -12,6 +12,7 @@ import time
 import psutil
 import os
 import torch
+import questionary
 
 def clear_memory():
     """Aggressive memory cleanup."""
@@ -91,32 +92,28 @@ def run_step(script, args, cool_down_after=True):
         clear_memory()
         cooling_break(10)  # 10 second break between steps
 
+def _prompt_required(message):
+    """Prompt until user provides a non-empty value."""
+    while True:
+        val = questionary.text(message).ask()
+        if val and val.strip():
+            return val.strip()
+        print("   ⚠️  This field is required, please enter a value.")
+
+
+def _prompt_default(message, default):
+    """Prompt with a default — pressing Enter keeps the default."""
+    val = questionary.text(f"{message} (default: {default})", default=str(default)).ask()
+    return val.strip() if val and val.strip() else str(default)
+
+
+def _load_classes_txt(path):
+    """Read class names from a classes.txt file (one name per line, skip blanks)."""
+    with open(path, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+
 def main():
-    ## ---------------------------------##
-    ##  GLOBAL VARIABLES PRE-TRAINING   ##
-    ## ---------------------------------##
-    imgs_label_path = r"path/to/LabelledData"  # Replace with your annotated images directory
-    class_names = [
-        "class0",
-        "class1",
-        "class2",
-    ]  # Replace with your class names
-
-    cropped_bbox_dir = "cropped_imgs_by_class"
-
-    batch_size = 64
-    save_suffix = "embeddings_dinov2.npy"
-
-    epsilon = 0.15  # Only imp when auto-tune is NOT selected during clustering
-    min_pts = 3
-    output_cluster_dir = "clustering_results_txt_files"
-    max_cluster_samples = 20
-
-    temp_file = "temp_ann_file.txt"
-    pdf_generate = True
-    pdf_name = "PDF_REPORT"
-    
-
     # GPU specs print
     print("="*60)
     print("INTRA-CLASS VARIATION EDA PIPELINE")
@@ -130,6 +127,57 @@ def main():
         print("  GPU: Not available or PyTorch not installed")
     
     print("="*60)
+
+    ## -----------------------------------------------##
+    ##   REQUIRED INPUTS (prompted, no defaults)       ##
+    ## -----------------------------------------------##
+    print("\n📁  STEP 0: CONFIGURE PIPELINE INPUTS")
+    print("="*60)
+
+    imgs_path   = _prompt_required("Path to images folder")
+    label_path  = _prompt_required("Path to labels folder (can be same as images folder)")
+    classes_txt = _prompt_required("Path to classes.txt file")
+
+    if not os.path.isdir(imgs_path):
+        raise OSError(f"Images path does not exist: {imgs_path}")
+    if not os.path.isdir(label_path):
+        raise OSError(f"Labels path does not exist: {label_path}")
+    if not os.path.isfile(classes_txt):
+        raise OSError(f"classes.txt not found: {classes_txt}")
+
+    class_names = _load_classes_txt(classes_txt)
+    print(f"\n✅  Loaded {len(class_names)} classes from {classes_txt}")
+
+    ## -----------------------------------------------##
+    ##   OPTIONAL PARAMETERS (Enter = keep default)   ##
+    ## -----------------------------------------------##
+    print("\n⚙️   PARAMETERS  (press Enter to keep default)\n")
+
+    # Embedding Handling
+    cropped_bbox_dir    = _prompt_default("Output folder for cropped images", "cropped_imgs_by_class")
+    batch_size          = int(_prompt_default("DINOv2 batch size (reduce if GPU OOM)", 64))
+    save_suffix         = _prompt_default("Embeddings filename", "embeddings_dinov2.npy")
+    use_embedding_cache = _prompt_default("Use embedding cache? (True/False)", True).lower() == "true"
+
+    # Cluster Handling
+    epsilon                      = float(_prompt_default("DBSCAN eps fallback (used if auto-tune disabled)", 0.15))
+    min_pts                      = int(_prompt_default("Min points per cluster", 3))
+    auto_tune_percentile         = int(_prompt_default("Auto-tune k-NN percentile (90=tight, 95=balanced, 98=loose)", 95))
+    umap_min_dist                = float(_prompt_default("UMAP min_dist (lower=tighter packing)", 0.05))
+    output_cluster_dir           = _prompt_default("Output folder for clustering results", "clustering_results_txt_files")
+    max_cluster_samples          = int(_prompt_default("Max sample images saved per cluster", 20))
+
+    # Uniform class handling
+    uniform_class_eps_threshold      = float(_prompt_default("Uniform class eps threshold", 0.1))
+    uniform_class_downsample_target  = int(_prompt_default("Uniform class downsample target", 4000))
+    uniform_class_min_samples        = int(_prompt_default("Uniform class min size to trigger downsampling", 12000))
+
+    # PDF handling
+    temp_file    = "temp_ann_file.txt"
+    pdf_generate = _prompt_default("Generate PDF report? (True/False)", True).lower() == "true"
+    pdf_name     = _prompt_default("Output PDF filename (no extension)", "PDF_REPORT")
+
+    print("\n" + "="*60)
 
     # Classes to ids and etc
     class_ids = [str(i) for i in range(len(class_names))]
@@ -146,17 +194,19 @@ def main():
     print("="*60)
     if pdf_generate:
         run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
-            "--imgs_label_path", imgs_label_path,
-            "--classes"] + class_ids + [  # Unpack list
-            "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
+            "--imgs_path", imgs_path,
+            "--label_path", label_path,
+            "--classes"] + class_ids + [
+            "--class_ids_to_names"] + class_ids_to_names + [
             "--output_dir", cropped_bbox_dir,
             "--output_txt_file", temp_file
         ])
     else:
         run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
-            "--imgs_label_path", imgs_label_path,
-            "--classes"] + class_ids + [  # Unpack list
-            "--class_ids_to_names"] + class_ids_to_names + [  # Unpack list
+            "--imgs_path", imgs_path,
+            "--label_path", label_path,
+            "--classes"] + class_ids + [
+            "--class_ids_to_names"] + class_ids_to_names + [
             "--output_dir", cropped_bbox_dir
         ])
 
@@ -167,11 +217,15 @@ def main():
     print("="*60)
     print("⚠️  This step is GPU-intensive")
     
-    run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", [
+    embedding_args = [
         "--root", cropped_bbox_dir,
         "--batch", str(batch_size),
         "--save_suffix", save_suffix
-    ], cool_down_after=True)
+    ]
+    if use_embedding_cache:
+        embedding_args.append("--use_cache")
+
+    run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", embedding_args, cool_down_after=True)
 
 
     # Step 3: Cluster using DBSCAN to visualize
@@ -186,8 +240,13 @@ def main():
         "--max_samples", str(max_cluster_samples),
         "--save_suffix", save_suffix,
         "--auto_tune",
+        "--auto_tune_percentile", str(auto_tune_percentile),
+        "--umap_min_dist", str(umap_min_dist),
         "--save_montage",
-        "--cross_class"
+        "--cross_class",
+        "--uniform_eps_threshold", str(uniform_class_eps_threshold),
+        "--uniform_downsample_target", str(uniform_class_downsample_target),
+        "--uniform_min_samples", str(uniform_class_min_samples)
     ], cool_down_after=False)  # No cooling needed after last step
 
     # Step 4 (Optional): Generate PDF Report
@@ -198,12 +257,12 @@ def main():
         run_step("postannotation_scripts/4. generate_pdf.py", [
             "--temp_txt_file", temp_file,
             "--clustering_dir", output_cluster_dir,
-            "--pdf_name", pdf_name
+            "--pdf_name", os.path.join(output_cluster_dir, pdf_name)
         ], cool_down_after=False)
 
         # Ask user whether to delete temp file
         print("\n" + "="*60)
-        print(f"📄 PDF Report generated: {pdf_name}.pdf")
+        print(f"📄 PDF Report generated: {os.path.join(output_cluster_dir, pdf_name)}.pdf")
         print(f"📁 Temporary annotation file: {temp_file}")
         print("="*60)
         response = input("\n🗑️  Delete temporary annotation file? (y/n): ")
@@ -226,8 +285,10 @@ def main():
     print("✅ PIPELINE COMPLETE!")
     print("="*60)
     print("\nOutput Locations:")
-    print(f"  Cropped Images: {cropped_bbox_dir}/")
+    print(f"  Cropped Images:     {cropped_bbox_dir}/")
     print(f"  Clustering Results: {output_cluster_dir}/")
+    if pdf_generate:
+        print(f"  PDF Report:         {os.path.join(output_cluster_dir, pdf_name)}.pdf")
     print("="*60)
 
 if __name__ == "__main__":

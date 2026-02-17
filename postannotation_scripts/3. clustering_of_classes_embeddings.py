@@ -32,7 +32,7 @@ from PIL import Image
 import shutil
 import pandas as pd
 
-def auto_tune_eps(embeddings, min_samples, percentile=90):
+def auto_tune_eps(embeddings, min_samples, percentile):
     """
         Automatically find optimal eps using k-nearest neighbors.
         What this does?
@@ -276,14 +276,30 @@ def visualize_all_classes_overview(all_results, output_path):
     print(f"\nSaved overview: {output_path}")
     plt.close()
 
-def analyze_cross_class_separability(X, y, class_names, eps, min_samples, output_path):
+def analyze_cross_class_separability(X, y, class_names, eps, min_samples, output_path, umap_threshold=10000, umap_min_dist=0.05):
     """Optional: Check if DBSCAN discovers class boundaries naturally."""
     print("\n" + "="*60)
     print("CROSS-CLASS ANALYSIS (Optional)")
     print("="*60)
-    
-    # Reduce dimensions
-    reducer = umap.UMAP(n_components=2, random_state=42)
+
+    # Reduce dimensions - use optimized settings for large cross-class datasets
+    n_samples = len(X)
+    print(f"Cross-class analysis on {n_samples} total samples")
+
+    if n_samples > umap_threshold:
+        print(f"  Large dataset detected - using optimized UMAP settings")
+        reducer = umap.UMAP(
+            n_components=2,
+            random_state=42,
+            init='random',           # Avoid spectral failure
+            n_epochs=200,            # Reduce from default 500 (2.5x faster)
+            n_neighbors=15,
+            min_dist=umap_min_dist,
+            verbose=True
+        )
+    else:
+        reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=umap_min_dist)
+
     X_2d = reducer.fit_transform(X)
     
     # Apply DBSCAN to all data
@@ -317,11 +333,16 @@ def main():
     parser.add_argument("--eps", type=float, default=0.15, help="DBSCAN eps for cosine distance (try 0.1-0.3)")
     parser.add_argument("--min_samples", type=int, default=3, help="Min samples to form cluster")
     parser.add_argument("--auto_tune", action="store_true", help="Automatically find optimal eps for each class")
+    parser.add_argument("--auto_tune_percentile", type=int, default=90, help="Percentile for auto-tune (90=tight, 95=balanced, 98=loose)")
+    parser.add_argument("--umap_min_dist", type=float, default=0.05, help="UMAP min_dist parameter (0.0=tight, 0.1=loose)")
     parser.add_argument("--output_dir", type=str, default="clustering_results")
     parser.add_argument("--max_samples", type=int, default=5, help="Max sample images per cluster to save")
     parser.add_argument("--cross_class", action="store_true", help="Also perform cross-class analysis")
     parser.add_argument("--save_montage", action="store_true", help="Create image montage for each class")
     parser.add_argument("--save_suffix", type=str, default="embeddings_dinov2.npy", help="Embedding filename to load (must match script 2 output)")
+    parser.add_argument("--uniform_eps_threshold", type=float, default=0.10, help="If auto-tuned eps < this, consider class uniform")
+    parser.add_argument("--uniform_downsample_target", type=int, default=5000, help="Target samples for uniform classes")
+    parser.add_argument("--uniform_min_samples", type=int, default=10000, help="Only downsample if class has more than this")
     args = parser.parse_args()
     
     # Create output directory
@@ -377,8 +398,8 @@ def main():
         
         # Auto-tune eps if requested
         if args.auto_tune:
-            optimal_eps = auto_tune_eps(embeddings, args.min_samples)
-            print(f"  Auto-tuned eps: {optimal_eps:.4f}")
+            optimal_eps = auto_tune_eps(embeddings, args.min_samples, percentile=args.auto_tune_percentile)
+            print(f"  Auto-tuned eps: {optimal_eps:.4f} (percentile={args.auto_tune_percentile})")
             eps_to_use = optimal_eps
         else:
             eps_to_use = args.eps
@@ -387,38 +408,80 @@ def main():
         all_embeddings.append(embeddings)
         all_labels.extend([len(class_names)] * len(embeddings))
         class_names.append(class_name)
-        
-        # Reduce dimensions for this class
-        reducer = umap.UMAP(n_components=2, random_state=42)
-        X_2d = reducer.fit_transform(embeddings)
-        
-        # Cluster within this class
-        cluster_labels, n_clusters, n_outliers = cluster_single_class(embeddings, class_name, eps_to_use, args.min_samples)
+
+        # Check if class is uniform and should be downsampled
+        n_samples = len(embeddings)
+        is_uniform = (n_samples > args.uniform_min_samples and
+                      eps_to_use < args.uniform_eps_threshold)
+
+        if is_uniform:
+            print(f"  ⚠️  Uniform class detected (eps={eps_to_use:.4f} < {args.uniform_eps_threshold})")
+            print(f"  📊 Downsampling from {n_samples} to {args.uniform_downsample_target} samples (grid-based)")
+
+            # Grid-based downsampling: take every Nth sample
+            stride = max(1, n_samples // args.uniform_downsample_target)
+            subsample_indices = np.arange(0, n_samples, stride)[:args.uniform_downsample_target]
+
+            embeddings_to_cluster = embeddings[subsample_indices]
+            image_files_to_cluster = [image_files[i] for i in subsample_indices]
+            n_samples_to_cluster = len(embeddings_to_cluster)
+
+            print(f"  ✓ Using {n_samples_to_cluster} samples for clustering (stride={stride})")
+        else:
+            embeddings_to_cluster = embeddings
+            image_files_to_cluster = image_files
+            n_samples_to_cluster = n_samples
+
+        # Reduce dimensions for visualization
+        # For large datasets, use faster UMAP settings to avoid hanging
+        if n_samples_to_cluster > args.uniform_min_samples:
+            print(f"  Large dataset detected ({n_samples_to_cluster} samples) - using optimized UMAP settings")
+            reducer = umap.UMAP(
+                n_components=2,
+                random_state=42,
+                init='random',           # Avoid spectral failure
+                n_epochs=200,            # Reduce from default 500 (2.5x faster)
+                n_neighbors=15,          # Keep default
+                min_dist=args.umap_min_dist,
+                verbose=True             # Show progress
+            )
+        else:
+            reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=args.umap_min_dist)
+
+        X_2d = reducer.fit_transform(embeddings_to_cluster)
+
+        # Cluster within this class (using downsampled data if uniform)
+        cluster_labels, n_clusters, n_outliers = cluster_single_class(
+            embeddings_to_cluster, class_name, eps_to_use, args.min_samples
+        )
         
         # Save statistics
         stats_data.append({
             'class': class_name,
-            'n_samples': len(embeddings),
+            'n_samples': f"{n_samples_to_cluster}/{n_samples}" if is_uniform else n_samples,
             'n_clusters': n_clusters,
             'n_outliers': n_outliers,
-            'outlier_rate': f"{n_outliers/len(embeddings)*100:.1f}%",
-            'eps_used': eps_to_use
+            'outlier_rate': f"{n_outliers/n_samples_to_cluster*100:.1f}%",
+            'eps_used': eps_to_use,
+            'downsampled': 'yes' if is_uniform else 'no'
         })
-        
+
         # Store results
         all_results.append((class_name, X_2d, cluster_labels))
-        
+
         # Visualize this class
         output_path = output_dir / f"{class_name}_clusters.png"
         visualize_intra_class(X_2d, cluster_labels, class_name, output_path)
-        
-        # Save sample images from each cluster
-        save_cluster_samples(image_files, cluster_labels, class_name, output_dir, args.max_samples)
-        
+
+        # Save sample images from each cluster (use downsampled data)
+        save_cluster_samples(image_files_to_cluster, cluster_labels, class_name, output_dir, args.max_samples)
+
         # Create montage if requested
         if args.save_montage:
             montage_path = output_dir / f"{class_name}_montage.png"
-            create_cluster_montage(image_files, cluster_labels, class_name, montage_path, args.max_samples)
+            # Add note to montage title if downsampled
+            montage_class_name = f"{class_name} (Uniform - analyzed {n_samples_to_cluster}/{n_samples} samples)" if is_uniform else class_name
+            create_cluster_montage(image_files_to_cluster, cluster_labels, montage_class_name, montage_path, args.max_samples)
     
     # Create overview
     if all_results:
@@ -451,7 +514,7 @@ def main():
         else:
             cross_class_eps = args.eps
 
-        analyze_cross_class_separability(X, y, class_names, cross_class_eps, args.min_samples, cross_path)
+        analyze_cross_class_separability(X, y, class_names, cross_class_eps, args.min_samples, cross_path, args.uniform_min_samples, args.umap_min_dist)
     
     print("\n" + "="*60)
     print("Analysis complete! Check the output directory for:")

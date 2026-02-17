@@ -456,10 +456,15 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality):
 
         # Build caption
         if cluster_info is not None:
+            # Check if downsampled column exists (for backward compatibility)
+            downsampled_info = ""
+            if 'downsampled' in cluster_info and cluster_info['downsampled'] == 'yes':
+                downsampled_info = " | <b><font color='orange'>⚠ Downsampled (uniform class)</font></b>"
+
             caption = (f"<b>Samples:</b> {cluster_info['n_samples']} | "
                       f"<b>Clusters:</b> {cluster_info['n_clusters']} | "
                       f"<b>Outliers:</b> {cluster_info['n_outliers']} ({cluster_info['outlier_rate']}) | "
-                      f"<b>Epsilon:</b> {cluster_info['eps_used']:.4f}")
+                      f"<b>Epsilon:</b> {cluster_info['eps_used']:.4f}{downsampled_info}")
         else:
             caption = f"<b>Samples:</b> {class_info['crops']} | <b>Clustering statistics unavailable</b>"
 

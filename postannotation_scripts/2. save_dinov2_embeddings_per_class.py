@@ -120,6 +120,7 @@ def main():
     parser.add_argument("--root", type=str, default="cropped_images", help="Root folder with per-class subfolders")
     parser.add_argument("--batch", type=int, default=32, help="Batch size for model inference")
     parser.add_argument("--save_suffix", type=str, default="embeddings_dinov2.npy", help="Filename used to save embeddings in each class folder")
+    parser.add_argument("--use_cache", action="store_true", help="Skip embedding generation if file already exists (faster for re-runs)")
     args = parser.parse_args()
 
     root = Path(args.root)
@@ -161,8 +162,14 @@ def main():
 
         # compute embeddings
         emb_out_path = cls_folder / args.save_suffix
-        # If existing file exists, you may choose to overwrite or skip.
-        if emb_out_path.exists():
+        mapping_path = cls_folder / f"{args.save_suffix.replace('.npy', '_image_list.txt')}"
+
+        # Check if embeddings already exist and use_cache is enabled
+        if args.use_cache and emb_out_path.exists() and mapping_path.exists():
+            print(f"✅ Using cached embeddings from: {emb_out_path.name}")
+            print(f"   (Use --use_cache to skip regeneration on re-runs)")
+            continue
+        elif emb_out_path.exists():
             print(f"⚠️  Note: {emb_out_path.name} already exists. Overwriting previous embeddings!")
 
         embeddings, valid_paths = compute_embeddings_for_paths(image_paths, processor, model, device, batch_size=args.batch)
