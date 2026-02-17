@@ -173,9 +173,14 @@ Input (annotated images OR video+model)
 ### Clustering (Script 3)
 - `--eps`: DBSCAN epsilon (0.1 strict, 0.15 balanced, 0.2-0.3 lenient)
 - `--min_samples`: Minimum points to form cluster (2-3 typical)
-- `--auto_tune`: Recommended - uses 90th percentile k-NN distance per class
+- `--auto_tune`: Recommended - uses k-NN distance percentile per class
+- `--auto_tune_percentile`: k-NN percentile for auto-tune (default: 90; 90=tight, 95=balanced, 98=loose)
+- `--umap_min_dist`: UMAP min_dist parameter (default: 0.05; 0.0=tight, 0.1=loose)
 - `--save_suffix`: Embedding filename to load (default: `embeddings_dinov2.npy`, must match Script 2 output)
 - `--max_samples`: Sample images per cluster (default: 5, outliers are all saved)
+- `--uniform_eps_threshold`: If auto-tuned eps < this value, class is considered uniform (default: 0.10)
+- `--uniform_downsample_target`: Target sample count when downsampling uniform classes (default: 5000)
+- `--uniform_min_samples`: Only downsample if class has more than this many samples (default: 10000)
 
 ### Video Processing (Script 1 post-training)
 - `--frame_stride`: Process every Nth frame (3 = 10fps for 30fps video)
@@ -204,13 +209,13 @@ Input (annotated images OR video+model)
 4. **Cross-Class Epsilon**: When `--auto_tune` is enabled with `--cross_class`, Script 3 uses the median of per-class eps values for cross-class DBSCAN clustering
 5. **Outlier Sampling**: Script 3 saves ALL outlier images (not sampled), while regular clusters are sampled up to `--max_samples`
 6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine number of rows
-7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 90 for ~80% file size reduction
+7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 75 for ~80% file size reduction
 8. **PIL Decompression Bomb**: Script 4 disables PIL's `MAX_IMAGE_PIXELS` limit to handle large montages (25+ clusters)
 
 ## File Naming Patterns
 
 ### Pre-Annotation Script
-- Output: `frame_analysis_results/PreAnnotation_Quality_Report.pdf`
+- Output: `frame_analysis_results_siglip_pose_emb/PreAnnotation_Quality_Report.pdf`
 - Temp files: `temp_preannotation_charts/` (auto-cleaned after PDF generation)
 - Embedding files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (uses SigLIP embeddings, should be deleted before next run!)
 
@@ -221,7 +226,7 @@ Input (annotated images OR video+model)
   - Default: `embeddings_dinov2.npy` + `embeddings_dinov2_image_list.txt`
   - Custom: `custom_emb.npy` + `custom_emb_image_list.txt`
 - Script 3 outputs: `{class}_clusters.png`, `{class}_montage.png`, `cluster_statistics.csv`
-- Script 4 outputs: `{pdf_name}.pdf` + temp JPEG chunks (auto-cleaned)
+- Script 4 outputs: `{pdf_name}.pdf` + `temp_pdf_charts/` directory with temp JPEG chunks (auto-cleaned)
 
 ## Dependencies
 

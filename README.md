@@ -73,7 +73,7 @@ Edit these at the top of `main()` function:
 frames_dir = r"D:\Your\Frames\Folder"  # Root directory with extracted frames
 batch_size = 64  # Embedding batch size
 anisotropy_threshold = 3.6  # Motion blur detection threshold (gradient anisotropy)
-output_dir = "frame_analysis_results"
+output_dir = "frame_analysis_results_siglip_pose_emb"
 pdf_name = "PreAnnotation_Quality_Report.pdf"
 use_embedding_cache = True  # Cache embeddings for faster re-runs
 ```
@@ -120,7 +120,7 @@ use_embedding_cache = True  # Cache embeddings for faster re-runs
 - Assessment of scenario diversity
 
 **Page 4-m: Activity Visual Examples** ⭐
-- **Montage for each activity** (4×3 grid of 12 sample images)
+- **Montage for each activity** (4 columns × up to 5 rows = 20 sample images per activity)
 - Visual validation of clustering quality
 - Labeled by Activity ID
 
@@ -204,7 +204,7 @@ Coverage gaps: Activity 3 has no bright lighting frames
 
 #### Output Structure
 ```
-frame_analysis_results_*/
+frame_analysis_results_siglip_pose_emb/
 └── PreAnnotation_Quality_Report.pdf
 ```
 
@@ -228,18 +228,26 @@ python "1. master_script_dinov2_PostAnn_PreTrain.py"
 ```
 
 #### Configuration Variables
-Edit these at the top of `main()` function:
+Configured via **interactive questionary prompts** when the script runs. Key variables:
 
 ```python
 ## GLOBAL VARIABLES PRE-TRAINING ##
-imgs_label_path = "path/to/LabelledData"
-class_names = ["class0", "class1", "class2"]
+imgs_path = "path/to/images"           # Path to images folder
+label_path = "path/to/labels"          # Path to YOLO .txt labels folder (can differ from imgs_path)
+classes_txt = "path/to/classes.txt"    # Path to classes.txt file (one class name per line)
 cropped_bbox_dir = "cropped_imgs_by_class"
-batch_size = "64"
-epsilon = "0.15"  # Ignored if auto_tune is used
-min_pts = "3"
-output_cluster_dir = "clustering_results"
-max_cluster_samples = "20"
+batch_size = 64
+save_suffix = "embeddings_dinov2.npy"
+use_embedding_cache = True
+epsilon = 0.15          # Ignored if auto_tune is used
+min_pts = 3
+auto_tune_percentile = 95   # 90=tight, 95=balanced, 98=loose
+umap_min_dist = 0.05        # 0.0=tight, 0.1=loose
+output_cluster_dir = "clustering_results_txt_files"
+max_cluster_samples = 20
+uniform_class_eps_threshold = 0.1
+uniform_class_downsample_target = 4000
+uniform_class_min_samples = 12000
 
 # PDF Generation (optional)
 temp_file = "temp_ann_file.txt"
@@ -520,6 +528,7 @@ python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./
 | `--root` | `cropped_images` | Root folder with class subfolders |
 | `--batch` | 32 | Batch size for inference |
 | `--save_suffix` | `embeddings_dinov2.npy` | Filename for embeddings |
+| `--use_cache` | False | Skip generation if embeddings already exist (faster re-runs) |
 
 #### Features
 1. **GPU Optimization**:
@@ -594,11 +603,16 @@ python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./
 | `--eps` | 0.15 | Max distance for neighbors (cosine) |
 | `--min_samples` | 3 | Min points to form cluster |
 | `--auto_tune` | False | Auto-find optimal eps per class |
+| `--auto_tune_percentile` | 90 | k-NN percentile for auto-tune (90=tight, 95=balanced, 98=loose) |
+| `--umap_min_dist` | 0.05 | UMAP min_dist parameter (0.0=tight, 0.1=loose) |
 | `--output_dir` | `clustering_results` | Output directory |
 | `--max_samples` | 5 | Sample images per cluster (outliers: all saved) |
 | `--save_suffix` | `embeddings_dinov2.npy` | Embedding filename (must match Script 2 output) |
 | `--cross_class` | False | Cross-class separability analysis |
 | `--save_montage` | False | Create image grid montages |
+| `--uniform_eps_threshold` | 0.10 | If auto-tuned eps < this, class is treated as uniform (low-variance) |
+| `--uniform_downsample_target` | 5000 | Target sample count when downsampling uniform classes |
+| `--uniform_min_samples` | 10000 | Only downsample uniform classes if they have more than this many samples |
 
 #### Parameter Guide
 **Epsilon (eps)**:
@@ -718,13 +732,13 @@ python "postannotation_scripts/4. generate_pdf.py" \
 3. **Generates visualizations**: Bar charts for class distribution and imbalance ratios
 4. **Combines montages**: Embeds clustering montages for each class
 5. **Smart image handling**:
-   - Compresses images to JPEG quality 90 for smaller file sizes
+   - Compresses images to JPEG quality 75 for smaller file sizes
    - Splits tall montages at cluster row boundaries (no clusters cut in half)
    - Adds continuation labels when montages span multiple pages
 6. **Creates PDF**: Professional multi-page report with proper formatting
 
 #### Features
-- **Automatic image compression**: Reduces PDF size by ~80% using JPEG quality 90
+- **Automatic image compression**: Reduces PDF size by ~80% using JPEG quality 75
 - **Intelligent splitting**: Montages split at cluster boundaries, never mid-cluster
 - **Page-aware layout**: Fits multiple cluster rows per page, adds continuation labels
 - **Error handling**: Creates placeholder images for missing montages
@@ -745,11 +759,11 @@ Pages 2-N: Per-Class Clustering Montages
 ```
 
 #### Technical Details
-- **Image format**: Converts PNG montages → JPEG quality 90 (80-90% smaller)
+- **Image format**: Converts PNG montages → JPEG quality 75 (~80% smaller)
 - **Split logic**: Calculates cluster rows from `cluster_statistics.csv`, fits whole rows per page
 - **Max page height**: 8.5 inches for montage content
 - **Max page width**: 7 inches for images
-- **Temporary files**: Auto-cleaned after PDF generation
+- **Temporary files**: `temp_pdf_charts/` directory (auto-cleaned after PDF generation)
 
 #### Example Output
 For a class with 25 clusters:
@@ -761,7 +775,7 @@ For a class with 25 clusters:
 
 #### Common Issues
 - **"Error loading montage image"**: Image too large - now fixed with PIL limits disabled
-- **PDF too large (>500KB)**: Already optimized with JPEG compression at quality 90
+- **PDF too large (>500KB)**: Already optimized with JPEG compression at quality 75
 - **Missing montages**: Ensure Script 3 was run with `--save_montage` flag
 
 #### Requirements
