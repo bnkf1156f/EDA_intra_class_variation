@@ -395,7 +395,12 @@ def main():
             continue
         
         print(f"\nProcessing: {class_name} ({embeddings.shape[0]} samples)")
-        
+
+        # Skip classes with too few samples for clustering
+        if embeddings.shape[0] < args.min_samples:
+            print(f"  ⚠️  Skipping {class_name}: only {embeddings.shape[0]} samples (need at least {args.min_samples} for min_samples)")
+            continue
+
         # Auto-tune eps if requested
         if args.auto_tune:
             optimal_eps = auto_tune_eps(embeddings, args.min_samples, percentile=args.auto_tune_percentile)
