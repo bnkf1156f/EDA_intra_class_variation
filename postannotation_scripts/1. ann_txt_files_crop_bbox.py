@@ -104,7 +104,8 @@ def main():
             missing_imgs.append(txt)
 
     if missing_imgs:
-        raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES: {missing_imgs}")
+        print(missing_imgs)
+        raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES")
     elif missing_txts:
         print(f"⚠️  NUMBER OF BACKGROUND PNG FILES WITH NO ANNOTATION/TXT FILE: {len(missing_txts)}\n")
     else:
