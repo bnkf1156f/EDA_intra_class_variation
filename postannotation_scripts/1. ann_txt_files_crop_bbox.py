@@ -89,8 +89,8 @@ def main():
 
     missing_imgs = []
     for txt in txt_files:
-        if txt == "classes.txt":
-            print("✅  IGNORE CLASSES.TXT!")
+        if txt == "classes.txt" or txt.endswith("_image_list.txt"):
+            print(f"✅  IGNORE NON-ANNOTATION FILE: {txt}")
             continue
 
         base_name = os.path.splitext(txt)[0]
@@ -130,7 +130,7 @@ def main():
     empty_crop_files = []  # Annotations that produced zero-size crops
 
     for txt_file in txt_files:
-        if txt_file == "classes.txt":
+        if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
             continue
         txt_path = os.path.join(label_dir, txt_file)
         with open(txt_path, 'r') as f:
@@ -228,7 +228,7 @@ def main():
     crop_counts = {cls: 0 for cls in classes_to_target}
 
     for txt_file in tqdm(txt_files, desc="Processing annotations", unit="file"):
-        if txt_file == "classes.txt":
+        if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
             continue
 
         txt_path = os.path.join(label_dir, txt_file)
@@ -334,7 +334,7 @@ def main():
             f.write("DATASET OVERVIEW:\n")
             f.write("-"*70 + "\n")
             f.write(f"Total image files found: {len(img_files)}\n")
-            f.write(f"Total annotation files found: {len([t for t in txt_files if t != 'classes.txt'])}\n")
+            f.write(f"Total annotation files found: {len([t for t in txt_files if t != 'classes.txt' and not t.endswith('_image_list.txt')])}\n")
 
             # Missing annotations (background images)
             f.write("\nPNG FILES WITH NO TXT ANNOTATIONS (Background Images) =>\n")
