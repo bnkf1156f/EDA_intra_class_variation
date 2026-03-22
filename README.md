@@ -62,21 +62,33 @@ Helps engineers assess whether extracted frames are worthy of annotation effort 
 
 #### Quick Start
 ```bash
-# Edit global variables in script, then run:
+# Run and follow interactive prompts:
 python "1. master_script_SigLip_PreAnn.py"
 ```
 
-#### Configuration Variables
-Edit these at the top of `main()` function:
-
-```python
-frames_dir = r"D:\Your\Frames\Folder"  # Root directory with extracted frames
-batch_size = 64  # Embedding batch size
-anisotropy_threshold = 3.6  # Motion blur detection threshold (gradient anisotropy)
-output_dir = "frame_analysis_results_siglip_pose_emb"
-pdf_name = "PreAnnotation_Quality_Report.pdf"
-use_embedding_cache = True  # Cache embeddings for faster re-runs
+Or use the launcher:
+```bash
+exec.bat   # Select option 1
 ```
+
+#### Interactive Prompts
+The script uses **interactive questionary prompts** — no need to edit code. It asks for:
+
+1. **Path to frames folder** (with autocomplete + validation)
+2. **"Change default parameters?"** — if No, skips to clustering params with sensible defaults
+3. **Clustering parameters** (always asked — these affect results the most):
+   - `n_components`: UMAP output dimensions (default: 16) — higher = finer clusters
+   - `min_cluster_size`: Smallest group of frames that counts as an activity (default: 10)
+   - `min_samples`: How strict a frame must match its neighbors to join a cluster (default: 3) — lower = more frames included, higher = only dense core frames
+   - `n_neighbors`: How many nearby frames UMAP looks at (default: 15) — higher = broader view
+   - `min_dist_umap`: UMAP minimum distance (default: **0.0** recommended)
+4. **Use embedding cache?** — Yes/No confirm
+
+**If "Change default parameters?" = Yes**, also prompts for:
+- YOLO batch size, confidence threshold
+- SigLIP batch size, anisotropy threshold
+- PDF layout (samples per activity, grid columns, image quality)
+- Output directory and PDF filename
 
 #### Parameter Guide
 
@@ -89,11 +101,7 @@ use_embedding_cache = True  # Cache embeddings for faster re-runs
 - `True`: **Recommended** - Saves embeddings to disk for faster re-runs
 - `False`: Recompute embeddings every time (slower)
 
-**UMAP + HDBSCAN Clustering Parameters** (Advanced):
-- `n_components`: UMAP output dimensions (default: 16) - Controls cluster granularity
-- `min_cluster_size`: Minimum frames to form an activity cluster (default: 10)
-- `min_samples`: Core point strictness in HDBSCAN (default: 3) - Lower = looser clustering
-- `n_neighbors`: UMAP local neighborhood size (default: 15) - Controls local vs global structure
+**UMAP + HDBSCAN Clustering Parameters**:
 - `min_dist_umap`: **CRITICAL** - UMAP minimum distance (default: **0.0** recommended)
   - `0.0`: Tightest packing, **12-15% outliers** (optimal quality, discovered 2026-02-16)
   - `0.1`: Looser packing, 23-25% outliers (worse clustering quality)
@@ -223,37 +231,52 @@ frame_analysis_results_siglip_pose_emb/
 
 #### Quick Start
 ```bash
-# Edit global variables in script, then run:
+# Run and follow interactive prompts:
 python "1. master_script_dinov2_PostAnn_PreTrain.py"
 ```
 
-#### Configuration Variables
-Configured via **interactive questionary prompts** when the script runs. Key variables:
-
-```python
-## GLOBAL VARIABLES PRE-TRAINING ##
-imgs_path = "path/to/images"           # Path to images folder
-label_path = "path/to/labels"          # Path to YOLO .txt labels folder (can differ from imgs_path)
-classes_txt = "path/to/classes.txt"    # Path to classes.txt file (one class name per line)
-cropped_bbox_dir = "cropped_imgs_by_class"
-batch_size = 64
-save_suffix = "embeddings_dinov2.npy"
-use_embedding_cache = True
-epsilon = 0.15          # Ignored if auto_tune is used
-min_pts = 3
-auto_tune_percentile = 95   # 90=tight, 95=balanced, 98=loose
-umap_min_dist = 0.05        # 0.0=tight, 0.1=loose
-output_cluster_dir = "clustering_results_txt_files"
-max_cluster_samples = 20
-uniform_class_eps_threshold = 0.1
-uniform_class_downsample_target = 4000
-uniform_class_min_samples = 12000
-
-# PDF Generation (optional)
-temp_file = "temp_ann_file.txt"
-pdf_generate = True  # Set to False to skip PDF generation
-pdf_name = "PDF_REPORT"
+Or use the launcher:
+```bash
+exec.bat   # Select option 2
 ```
+
+#### Interactive Prompts
+The script uses **interactive questionary prompts** — no need to edit code. It asks for:
+
+1. **Paths** (with autocomplete + validation):
+   - Images folder, Labels folder, classes.txt file
+2. **"Change default parameters?"** — if No, skips embedding/clustering/PDF detail params
+3. **Clustering flags** (always asked):
+   - Enable auto-tune eps? (Yes/No) — auto-calculates optimal epsilon per class
+   - Enable cross-class analysis? (Yes/No) — compares embeddings across classes
+4. **Conditional clustering param**:
+   - If auto-tune ON → asks k-NN percentile (90=tight, 95=balanced, 98=loose)
+   - If auto-tune OFF → asks DBSCAN epsilon (0.10=strict, 0.15=balanced, 0.20-0.30=lenient)
+5. **Generate PDF report?** (Yes/No confirm)
+
+**If "Change default parameters?" = Yes**, also prompts for:
+- Cropped images output folder, DINOv2 batch size, embeddings filename
+- Use embedding cache, min points per cluster, UMAP min_dist
+- Clustering output folder, max sample images per cluster
+- Uniform class handling thresholds
+
+#### Default Values
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cropped_bbox_dir` | `cropped_imgs_by_class` | Output folder for cropped images |
+| `batch_size` | `64` | DINOv2 batch size |
+| `save_suffix` | `embeddings_dinov2.npy` | Embeddings filename |
+| `use_embedding_cache` | `True` | Cache embeddings for faster re-runs |
+| `auto_tune` | `True` | Auto-calculate DBSCAN epsilon per class |
+| `cross_class` | `True` | Cross-class separability analysis |
+| `auto_tune_percentile` | `95` | k-NN percentile (90=tight, 95=balanced, 98=loose) |
+| `epsilon` | `0.15` | DBSCAN eps fallback (only if auto-tune OFF) |
+| `min_pts` | `3` | Min points per cluster |
+| `umap_min_dist` | `0.05` | UMAP min_dist (0.0=tight, 0.1=loose) |
+| `output_cluster_dir` | `clustering_results_txt_files` | Clustering results folder |
+| `max_cluster_samples` | `20` | Max sample images per cluster |
+| `pdf_generate` | `True` | Generate PDF report |
+| `pdf_name` | `PDF_REPORT` | Output PDF filename (no extension) |
 
 #### Pipeline Steps
 1. **Crop Extraction** (`postannotation_scripts/1. ann_txt_files_crop_bbox.py`)
@@ -289,8 +312,13 @@ Same as pre-training script, plus:
 
 #### Quick Start
 ```bash
-# Edit global variables in script, then run:
+# Run and follow interactive prompts:
 python "1. master_script_dinov2_PostTrain.py"
+```
+
+Or use the launcher:
+```bash
+exec.bat   # Select option 3
 ```
 
 #### Configuration Variables

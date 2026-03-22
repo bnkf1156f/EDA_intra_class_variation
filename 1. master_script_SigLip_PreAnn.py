@@ -1837,19 +1837,48 @@ def _add_coverage_analysis(story, analysis_data, temp_dir, heading_style, normal
 
 
 ## ---------------------------------- MAIN PIPELINE -----------------------------------------
-def _prompt_required(message):
-    """Prompt until user provides a non-empty value."""
-    while True:
-        val = questionary.text(message).ask()
-        if val and val.strip():
-            return val.strip()
-        print("   ⚠️  This field is required, please enter a value.")
+import os
+
+def ask_or_exit(prompt_result):
+    """Exit cleanly if user cancels a questionary prompt (Ctrl+C)."""
+    if prompt_result is None:
+        print("\n   Cancelled by user. Exiting.")
+        sys.exit(0)
+    return prompt_result
 
 
-def _prompt_default(message, default):
-    """Prompt with a default — pressing Enter keeps the default."""
-    val = questionary.text(f"{message} (default: {default})", default=str(default)).ask()
-    return val.strip() if val and val.strip() else str(default)
+def _ask(prompt_fn):
+    """Wrap any questionary prompt with cancel + RuntimeError handling."""
+    try:
+        return ask_or_exit(prompt_fn.ask())
+    except (KeyboardInterrupt, EOFError, RuntimeError):
+        print("\n   Cancelled by user. Exiting.")
+        sys.exit(0)
+
+
+def _prompt_path(message, must_exist_dir=False, must_exist_file=False):
+    """Prompt for a path with autocomplete and validation."""
+    def _validate(p):
+        p = p.strip().strip('"').strip("'")
+        if not p:
+            return "This field is required."
+        if must_exist_dir and not os.path.isdir(p):
+            return f"Directory does not exist: {p}"
+        if must_exist_file and not os.path.isfile(p):
+            return f"File does not exist: {p}"
+        return True
+    val = _ask(questionary.path(message, validate=_validate))
+    return val.strip().strip('"').strip("'")
+
+
+def _prompt_text(message, default=None):
+    """Prompt for text with an optional default."""
+    if default is not None:
+        val = _ask(questionary.text(message, default=str(default)))
+    else:
+        val = _ask(questionary.text(message))
+    val = val.strip().strip('"').strip("'")
+    return val if val else (str(default) if default is not None else "")
 
 
 def main():
@@ -1863,39 +1892,53 @@ def main():
     print("\n📁  STEP 0: CONFIGURE PIPELINE INPUTS")
     print("="*60)
 
-    frames_dir = _prompt_required("Path to frames folder")
-
-    if not Path(frames_dir).exists():
-        raise RuntimeError(f"Frames directory does not exist: {frames_dir}")
+    frames_dir = _prompt_path("Path to frames folder:", must_exist_dir=True)
 
     ## -----------------------------------------------##
-    ##   OPTIONAL PARAMETERS (Enter = keep default)   ##
+    ##   OPTIONAL PARAMETERS                           ##
     ## -----------------------------------------------##
-    print("\n⚙️   PARAMETERS  (press Enter to keep default)\n")
 
-    yolo_batch_size      = int(_prompt_default("YOLO pose detection batch size", 8))
-    yolo_conf_person_thr = float(_prompt_default("YOLO pose detection confidence threshold", 0.3))
-    batch_size           = int(_prompt_default("SigLIP embedding batch size", 64))
+    change_defaults = _ask(questionary.confirm(
+        "Change default parameters?", default=False))
 
-    anisotropy_threshold = float(_prompt_default("Motion blur anisotropy threshold (lower=stricter)", 3.6))
+    if change_defaults:
+        yolo_batch_size      = int(_prompt_text("YOLO pose detection batch size", 8))
+        yolo_conf_person_thr = float(_prompt_text("YOLO pose detection confidence threshold", 0.3))
+        batch_size           = int(_prompt_text("SigLIP embedding batch size", 64))
+        anisotropy_threshold = float(_prompt_text("Motion blur anisotropy threshold (lower=stricter)", 3.6))
+    else:
+        yolo_batch_size      = 8
+        yolo_conf_person_thr = 0.3
+        batch_size           = 64
+        anisotropy_threshold = 3.6
 
-    n_components      = int(_prompt_default("UMAP output dimensions (higher=finer clusters)", 16))
-    min_cluster_size  = int(_prompt_default("Min frames per activity cluster", 10))
-    min_samples       = int(_prompt_default("HDBSCAN min_samples (lower=looser)", 3))
-    n_neighbors       = int(_prompt_default("UMAP n_neighbors", 15))
-    min_dist_umap     = float(_prompt_default("UMAP min_dist (0.0=tightest packing)", 0.0))
+    # Clustering — always ask (these affect results the most)
+    n_components      = int(_prompt_text("UMAP output dimensions (higher=finer clusters)", 16))
+    min_cluster_size  = int(_prompt_text("HDBSCAN min cluster size (smallest group of frames that counts as an activity)", 10))
+    min_samples       = int(_prompt_text("HDBSCAN min_samples (how strict a frame must match its neighbors to join a cluster; lower=more frames included, higher=only dense core frames)", 3))
+    n_neighbors       = int(_prompt_text("UMAP n_neighbors (how many nearby frames UMAP looks at; higher=broader view)", 15))
+    min_dist_umap     = float(_prompt_text("UMAP min_dist (0.0=tightest packing, reduces outliers)", 0.0))
 
-    cache_blurry_num_samples = int(_prompt_default("Blurry samples shown in PDF", 24))
-    activity_num_samples     = int(_prompt_default("Samples shown per activity", 20))
-    outliers_num_samples     = int(_prompt_default("Samples shown for outliers", 52))
-    pdf_image_quality        = int(_prompt_default("PDF image JPEG quality (1-100)", 70))
+    if change_defaults:
+        cache_blurry_num_samples = int(_prompt_text("Blurry samples shown in PDF", 24))
+        activity_num_samples     = int(_prompt_text("Samples shown per activity in PDF", 20))
+        outliers_num_samples     = int(_prompt_text("Samples shown for outliers in PDF", 52))
+        pdf_image_quality        = int(_prompt_text("PDF image JPEG quality (1-100)", 70))
+        grid_cols_activities     = int(_prompt_text("Grid columns for activity montages in PDF", 4))
+        grid_cols_blurry         = int(_prompt_text("Grid columns for blurry montage in PDF", 4))
+        output_dir               = _prompt_text("Output directory for results", "frame_analysis_results_siglip_pose_emb")
+        pdf_name                 = _prompt_text("Output PDF filename", "PreAnnotation_Quality_Report.pdf")
+    else:
+        cache_blurry_num_samples = 24
+        activity_num_samples     = 20
+        outliers_num_samples     = 52
+        pdf_image_quality        = 70
+        grid_cols_activities     = 4
+        grid_cols_blurry         = 4
+        output_dir               = "frame_analysis_results_siglip_pose_emb"
+        pdf_name                 = "PreAnnotation_Quality_Report.pdf"
 
-    grid_cols_activities = int(_prompt_default("Grid columns for activity montages", 4))
-    grid_cols_blurry     = int(_prompt_default("Grid columns for blurry montage", 4))
-
-    output_dir           = _prompt_default("Output directory for results", "frame_analysis_results_siglip_pose_emb")
-    pdf_name             = _prompt_default("Output PDF filename", "PreAnnotation_Quality_Report.pdf")
-    use_embedding_cache  = _prompt_default("Use embedding cache? (True/False)", True).lower() == "true"
+    use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
 
     # Model Name for Embedding
     model_name = "google/siglip-base-patch16-224"   # Fast (1.4 min/10K frames) + 768d embeddings

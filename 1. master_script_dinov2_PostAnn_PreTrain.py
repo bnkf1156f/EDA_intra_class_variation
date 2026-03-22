@@ -92,19 +92,46 @@ def run_step(script, args, cool_down_after=True):
         clear_memory()
         cooling_break(10)  # 10 second break between steps
 
-def _prompt_required(message):
-    """Prompt until user provides a non-empty value."""
-    while True:
-        val = questionary.text(message).ask()
-        if val and val.strip():
-            return val.strip()
-        print("   ⚠️  This field is required, please enter a value.")
+def ask_or_exit(prompt_result):
+    """Exit cleanly if user cancels a questionary prompt (Ctrl+C)."""
+    if prompt_result is None:
+        print("\n   Cancelled by user. Exiting.")
+        sys.exit(0)
+    return prompt_result
 
 
-def _prompt_default(message, default):
-    """Prompt with a default — pressing Enter keeps the default."""
-    val = questionary.text(f"{message} (default: {default})", default=str(default)).ask()
-    return val.strip() if val and val.strip() else str(default)
+def _ask(prompt_fn):
+    """Wrap any questionary prompt with cancel + RuntimeError handling."""
+    try:
+        return ask_or_exit(prompt_fn.ask())
+    except (KeyboardInterrupt, EOFError, RuntimeError):
+        print("\n   Cancelled by user. Exiting.")
+        sys.exit(0)
+
+
+def _prompt_path(message, must_exist_dir=False, must_exist_file=False):
+    """Prompt for a path with autocomplete and validation."""
+    def _validate(p):
+        p = p.strip().strip('"').strip("'")
+        if not p:
+            return "This field is required."
+        if must_exist_dir and not os.path.isdir(p):
+            return f"Directory does not exist: {p}"
+        if must_exist_file and not os.path.isfile(p):
+            return f"File does not exist: {p}"
+        return True
+    val = _ask(questionary.path(message, validate=_validate))
+    return val.strip().strip('"').strip("'")
+
+
+def _prompt_text(message, default=None):
+    """Prompt for text with an optional default."""
+    if default is not None:
+        val = _ask(questionary.text(message, default=str(default)))
+    else:
+        val = _ask(questionary.text(message))
+    val = val.strip().strip('"').strip("'")
+    return val if val else (str(default) if default is not None else "")
 
 
 def _load_classes_txt(path):
@@ -134,48 +161,67 @@ def main():
     print("\n📁  STEP 0: CONFIGURE PIPELINE INPUTS")
     print("="*60)
 
-    imgs_path   = _prompt_required("Path to images folder")
-    label_path  = _prompt_required("Path to labels folder (can be same as images folder)")
-    classes_txt = _prompt_required("Path to classes.txt file")
-
-    if not os.path.isdir(imgs_path):
-        raise OSError(f"Images path does not exist: {imgs_path}")
-    if not os.path.isdir(label_path):
-        raise OSError(f"Labels path does not exist: {label_path}")
-    if not os.path.isfile(classes_txt):
-        raise OSError(f"classes.txt not found: {classes_txt}")
+    imgs_path   = _prompt_path("Path to images folder:", must_exist_dir=True)
+    label_path  = _prompt_path("Path to labels folder (can be same as images):", must_exist_dir=True)
+    classes_txt = _prompt_path("Path to classes.txt file:", must_exist_file=True)
 
     class_names = _load_classes_txt(classes_txt)
     print(f"\n✅  Loaded {len(class_names)} classes from {classes_txt}")
 
     ## -----------------------------------------------##
-    ##   OPTIONAL PARAMETERS (Enter = keep default)   ##
+    ##   OPTIONAL PARAMETERS                           ##
     ## -----------------------------------------------##
-    print("\n⚙️   PARAMETERS  (press Enter to keep default)\n")
+
+    change_defaults = _ask(questionary.confirm(
+        "Change default parameters?", default=False))
 
     # Embedding Handling
-    cropped_bbox_dir    = _prompt_default("Output folder for cropped images", "cropped_imgs_by_class")
-    batch_size          = int(_prompt_default("DINOv2 batch size (reduce if GPU OOM)", 64))
-    save_suffix         = _prompt_default("Embeddings filename", "embeddings_dinov2.npy")
-    use_embedding_cache = _prompt_default("Use embedding cache? (True/False)", True).lower() == "true"
+    if change_defaults:
+        cropped_bbox_dir    = _prompt_text("Output folder for cropped images", "cropped_imgs_by_class")
+        batch_size          = int(_prompt_text("DINOv2 batch size (reduce if GPU OOM)", 64))
+        save_suffix         = _prompt_text("Embeddings filename", "embeddings_dinov2.npy")
+        use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
+    else:
+        cropped_bbox_dir    = "cropped_imgs_by_class"
+        batch_size          = 64
+        save_suffix         = "embeddings_dinov2.npy"
+        use_embedding_cache = True
 
-    # Cluster Handling
-    epsilon                      = float(_prompt_default("DBSCAN eps fallback (used if auto-tune disabled)", 0.15))
-    min_pts                      = int(_prompt_default("Min points per cluster", 3))
-    auto_tune_percentile         = int(_prompt_default("Auto-tune k-NN percentile (90=tight, 95=balanced, 98=loose)", 95))
-    umap_min_dist                = float(_prompt_default("UMAP min_dist (lower=tighter packing)", 0.05))
-    output_cluster_dir           = _prompt_default("Output folder for clustering results", "clustering_results_txt_files")
-    max_cluster_samples          = int(_prompt_default("Max sample images saved per cluster", 20))
+    # Clustering flags
+    auto_tune   = _ask(questionary.confirm("Enable auto-tune eps?", default=True))
+    cross_class = _ask(questionary.confirm("Enable cross-class analysis?", default=True))
 
-    # Uniform class handling
-    uniform_class_eps_threshold      = float(_prompt_default("Uniform class eps threshold", 0.1))
-    uniform_class_downsample_target  = int(_prompt_default("Uniform class downsample target", 4000))
-    uniform_class_min_samples        = int(_prompt_default("Uniform class min size to trigger downsampling", 12000))
+    # Cluster Handling — conditionally prompt eps OR percentile
+    if auto_tune:
+        auto_tune_percentile = int(_prompt_text("Auto-tune k-NN percentile (90=tight, 95=balanced, 98=loose)", 95))
+        epsilon = 0.15  # unused fallback
+    else:
+        epsilon = float(_prompt_text("DBSCAN epsilon (0.10=strict, 0.15=balanced, 0.20-0.30=lenient)", 0.15))
+        auto_tune_percentile = 95  # unused fallback
+
+    if change_defaults:
+        min_pts             = int(_prompt_text("Min points per cluster", 3))
+        umap_min_dist       = float(_prompt_text("UMAP min_dist (lower=tighter packing)", 0.05))
+        output_cluster_dir  = _prompt_text("Output folder for clustering results", "clustering_results_txt_files")
+        max_cluster_samples = int(_prompt_text("Max sample images saved per cluster", 20))
+
+        # Uniform class handling
+        uniform_class_eps_threshold     = float(_prompt_text("Uniform class eps threshold", 0.1))
+        uniform_class_downsample_target = int(_prompt_text("Uniform class downsample target", 4000))
+        uniform_class_min_samples       = int(_prompt_text("Uniform class min size to trigger downsampling", 12000))
+    else:
+        min_pts             = 3
+        umap_min_dist       = 0.05
+        output_cluster_dir  = "clustering_results_txt_files"
+        max_cluster_samples = 20
+        uniform_class_eps_threshold     = 0.1
+        uniform_class_downsample_target = 4000
+        uniform_class_min_samples       = 12000
 
     # PDF handling
     temp_file    = "temp_ann_file.txt"
-    pdf_generate = _prompt_default("Generate PDF report? (True/False)", True).lower() == "true"
-    pdf_name     = _prompt_default("Output PDF filename (no extension)", "PDF_REPORT")
+    pdf_generate = _ask(questionary.confirm("Generate PDF report?", default=True))
+    pdf_name     = _prompt_text("Output PDF filename (no extension)", "PDF_REPORT") if pdf_generate else "PDF_REPORT"
 
     print("\n" + "="*60)
 
@@ -232,22 +278,27 @@ def main():
     print("\n" + "="*60)
     print(f"STEP 3/{total_steps}: CLUSTERING ANALYSIS")
     print("="*60)
-    run_step("postannotation_scripts/3. clustering_of_classes_embeddings.py", [
+    cluster_args = [
         "--root", cropped_bbox_dir,
         "--eps", str(epsilon),
         "--min_samples", str(min_pts),
         "--output_dir", output_cluster_dir,
         "--max_samples", str(max_cluster_samples),
         "--save_suffix", save_suffix,
-        "--auto_tune",
         "--auto_tune_percentile", str(auto_tune_percentile),
         "--umap_min_dist", str(umap_min_dist),
         "--save_montage",
-        "--cross_class",
         "--uniform_eps_threshold", str(uniform_class_eps_threshold),
         "--uniform_downsample_target", str(uniform_class_downsample_target),
         "--uniform_min_samples", str(uniform_class_min_samples)
-    ], cool_down_after=False)  # No cooling needed after last step
+    ]
+    if auto_tune:
+        cluster_args.append("--auto_tune")
+    if cross_class:
+        cluster_args.append("--cross_class")
+
+    run_step("postannotation_scripts/3. clustering_of_classes_embeddings.py",
+             cluster_args, cool_down_after=False)  # No cooling needed after last step
 
     # Step 4 (Optional): Generate PDF Report
     if pdf_generate:

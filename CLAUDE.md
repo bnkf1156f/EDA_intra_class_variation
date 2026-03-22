@@ -34,17 +34,16 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 ### Automated (Recommended)
 ```bash
-# PRE-ANNOTATION: Frame quality assessment (BEFORE annotation, uses SigLIP)
-python "1. master_script_SigLip_PreAnn.py"
+# Use the launcher (interactive menu):
+exec.bat
 
-# PRE-TRAINING: Intra-class analysis (AFTER annotation, before training, uses DINOv2)
-python "1. master_script_dinov2_PostAnn_PreTrain.py"
-
-# POST-TRAINING: Model detection analysis (AFTER model training, uses DINOv2)
-python "1. master_script_dinov2_PostTrain.py"
+# Or run directly (each script prompts for inputs interactively):
+python "1. master_script_SigLip_PreAnn.py"       # Pre-annotation
+python "1. master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
+python "1. master_script_dinov2_PostTrain.py"     # Post-training
 ```
 
-Configure global variables at the top of `main()` in each master script before running.
+All master scripts use **interactive questionary prompts** — paths use autocomplete with validation, booleans use Yes/No confirms, and niche parameters are hidden behind a "Change default parameters?" gate.
 
 ### Manual Step-by-Step
 
@@ -142,28 +141,32 @@ Input (annotated images OR video+model)
 - Script 4 depends on Script 1's txt output and Script 3's montage PNG files
 
 ### Master Script Features
+- Interactive questionary prompts (path autocomplete, Yes/No confirms, "Change defaults?" gate)
+- Cancel handling: Ctrl+C exits cleanly at any prompt (handles prompt_toolkit RuntimeError on Windows)
 - Memory management: GPU cache clearing, garbage collection between steps
 - Cooling breaks: 10-second pauses to prevent laptop GPU thermal throttling
 - Resource monitoring: Warns if RAM >90% or GPU >85%
 - Error handling: Cleanup on failure or keyboard interrupt
+- Launcher: `exec.bat` provides menu to select which pipeline to run
 
 ## Key Parameters
 
 ### Pre-Annotation Script (1. master_script_SigLip_PreAnn.py)
-- `frames_dir`: Root directory with extracted frame images
-- `anisotropy_threshold`: Motion blur detection threshold (2.5 strict, 3.6 balanced, 5.0 lenient)
-- `use_embedding_cache`: Cache embeddings to disk for faster re-runs (True recommended)
-- `batch_size`: SigLIP inference batch size (default 64)
-- `cache_blurry_num_samples`: Number of blurry sample images to show in PDF (default 24)
-- `grid_cols_activities`: Grid columns for activity montages (default 4)
-- `grid_cols_blurry`: Grid columns for blurry sample montage (default 4)
+All parameters are configured via interactive prompts. Clustering params are always asked; niche params only shown if "Change default parameters?" = Yes.
 
-**UMAP + HDBSCAN Clustering Parameters:**
+**Always prompted (clustering):**
 - `n_components`: UMAP output dimensions (default 16, affects cluster granularity)
-- `min_cluster_size`: Minimum frames per activity cluster (default 10)
-- `min_samples`: HDBSCAN core point strictness (default 3, lower=looser)
-- `n_neighbors`: UMAP local neighborhood size (default 15)
+- `min_cluster_size`: Smallest group of frames that counts as an activity (default 10)
+- `min_samples`: How strict a frame must match neighbors to join a cluster (default 3, lower=more frames included)
+- `n_neighbors`: How many nearby frames UMAP looks at (default 15, higher=broader view)
 - `min_dist_umap`: UMAP minimum distance in embedding space (default 0.0 for tightest packing, reduces outliers)
+- `use_embedding_cache`: Cache embeddings to disk for faster re-runs (default True)
+
+**Behind "Change defaults?" gate:**
+- `batch_size`: SigLIP inference batch size (default 64)
+- `anisotropy_threshold`: Motion blur detection threshold (2.5 strict, 3.6 balanced, 5.0 lenient)
+- `cache_blurry_num_samples`: Blurry sample images in PDF (default 24)
+- `grid_cols_activities`/`grid_cols_blurry`: Grid columns for montages (default 4)
 
 **Optimal settings (discovered 2026-02-16):**
 - Use `min_dist_umap = 0.0` for best outlier reduction (12-15% outliers vs 23-25% with 0.1)
