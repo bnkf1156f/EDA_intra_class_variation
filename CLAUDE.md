@@ -20,27 +20,30 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `1. master_script_SigLip_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses SigLIP) | BEFORE annotation |
-| `1. master_script_dinov2_PostAnn_PreTrain.py` | Automated pre-training pipeline (uses DINOv2) | AFTER annotation |
-| `1. master_script_dinov2_PostTrain.py` | Automated post-training pipeline (uses DINOv2) | AFTER model training |
+| `master_scripts/1. master_script_SigLip_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses SigLIP) | BEFORE annotation |
+| `master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py` | Automated pre-training pipeline (uses DINOv2) | AFTER annotation |
+| `master_scripts/1. master_script_dinov2_PostTrain.py` | Automated post-training pipeline (uses DINOv2) | AFTER model training |
 | `postannotation_scripts/1. ann_txt_files_crop_bbox.py` | Pre-training: Extract crops from YOLO annotations | Part of pretrain pipeline |
 | `postannotation_scripts/1. yolo_model_crop_bbox_per_class.py` | Post-training: Extract crops from model detections | Part of posttrain pipeline |
 | `postannotation_scripts/2. save_dinov2_embeddings_per_class.py` | Generate DINOv2 embeddings | Part of both pipelines |
 | `postannotation_scripts/3. clustering_of_classes_embeddings.py` | DBSCAN clustering analysis | Part of both pipelines |
 | `postannotation_scripts/4. generate_pdf.py` | Generate PDF reports combining dataset stats + clustering results | Part of both pipelines |
-| `1. interactive_cluster_viewer.py` | Optional: Interactive Plotly HTML viewer | Optional addon |
+| `utils/preann_pdf_generate.py` | PDF/montage generation for pre-annotation pipeline | Imported by SigLip master script |
+| `master_scripts/1. interactive_cluster_viewer.py` | Optional: Interactive Plotly HTML viewer | Optional addon |
 
 ## Running the Pipeline
 
+**IMPORTANT**: Always run from the **project root** directory (where `exec.bat` lives). Running from `master_scripts/` will cause path errors.
+
 ### Automated (Recommended)
 ```bash
-# Use the launcher (interactive menu):
-exec.bat
+# Use the launcher — Pre-Annotation and Pre-Training available via menu:
+./exec.bat
 
-# Or run directly (each script prompts for inputs interactively):
-python "1. master_script_SigLip_PreAnn.py"       # Pre-annotation
-python "1. master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
-python "1. master_script_dinov2_PostTrain.py"     # Post-training
+# Or run directly from project root:
+python "master_scripts/1. master_script_SigLip_PreAnn.py"           # Pre-annotation
+python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
+python "master_scripts/1. master_script_dinov2_PostTrain.py"         # Post-training (not in exec.bat)
 ```
 
 All master scripts use **interactive questionary prompts** — paths use autocomplete with validation, booleans use Yes/No confirms, and niche parameters are hidden behind a "Change default parameters?" gate.
@@ -49,8 +52,7 @@ All master scripts use **interactive questionary prompts** — paths use autocom
 
 **Pre-annotation workflow** (raw frames → quality PDF):
 ```bash
-# Single script, no steps - directly outputs PDF (uses SigLIP embeddings)
-python "1. master_script_SigLip_PreAnn.py"
+python "master_scripts/1. master_script_SigLip_PreAnn.py"
 ```
 
 **Pre-training workflow** (annotated images → clustering):
@@ -82,7 +84,7 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" --model mod
 Input: Raw frames (.png, .jpg, .jpeg)
     |
     v
-[1. master_script_SigLip_PreAnn.py]
+[master_scripts/1. master_script_SigLip_PreAnn.py]
     - Person detection (YOLOv11-pose)
     - SigLIP embeddings (adaptive: 90% scene weight + 10% pose weight when persons detected)
     - Activity clustering (UMAP + HDBSCAN)
@@ -454,6 +456,7 @@ Or should I make this a configurable parameter at the top of main()?
 
 ## File Paths
 - Main directory: `<project_root>/`
+- Master scripts: `<project_root>/master_scripts/`
 - Core scripts (1, 2, 3) for Post-annotation: `<project_root>/postannotation_scripts/`
-- Master scripts (1.*): Main directory
+- Utility modules: `<project_root>/utils/` (e.g., `preann_pdf_generate.py`)
 - README: `<project_root>/README.md`

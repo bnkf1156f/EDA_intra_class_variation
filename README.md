@@ -36,11 +36,23 @@ Analyzes intra-class variations in annotated object detection datasets through:
 
 ## 🚀 Master Scripts (Automated Pipeline)
 
-Three master scripts are provided: one for **pre-annotation** frame quality assessment, and two for **post-annotation** intra-class variation analysis.
+Three master scripts live in `master_scripts/`: one for **pre-annotation** frame quality assessment, and two for **post-annotation** intra-class variation analysis.
+
+> **⚠️ IMPORTANT — Run from project root!**
+> Always `cd` into the project root directory (where `exec.bat` lives) before running any script. The scripts use relative paths to `postannotation_scripts/`, `utils/`, and `models/` — running from `master_scripts/` will cause path errors.
+> ```bash
+> # ✅ Correct — from project root:
+> ./exec.bat
+> python "master_scripts/1. master_script_SigLip_PreAnn.py"
+>
+> # ❌ Wrong — from master_scripts/ subfolder:
+> cd master_scripts
+> python "1. master_script_SigLip_PreAnn.py"   # paths will break!
+> ```
 
 ---
 
-### Script: 1. master_script_SigLip_PreAnn.py
+### Script: master_scripts/1. master_script_SigLip_PreAnn.py
 **PRE-ANNOTATION Frame Quality Assessment** - Validate frames BEFORE sending to annotators
 
 #### Purpose
@@ -62,13 +74,11 @@ Helps engineers assess whether extracted frames are worthy of annotation effort 
 
 #### Quick Start
 ```bash
-# Run and follow interactive prompts:
-python "1. master_script_SigLip_PreAnn.py"
-```
+# Recommended — use the launcher (from project root):
+./exec.bat   # Select option 1
 
-Or use the launcher:
-```bash
-exec.bat   # Select option 1
+# Or run directly (from project root):
+python "master_scripts/1. master_script_SigLip_PreAnn.py"
 ```
 
 #### Interactive Prompts
@@ -218,7 +228,7 @@ frame_analysis_results_siglip_pose_emb/
 
 ---
 
-### Script: 1. master_script_dinov2_PostAnn_PreTrain.py
+### Script: master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py
 **Automated PRE-TRAINING pipeline** - Analyzes annotated dataset before model training
 
 #### Features
@@ -231,13 +241,11 @@ frame_analysis_results_siglip_pose_emb/
 
 #### Quick Start
 ```bash
-# Run and follow interactive prompts:
-python "1. master_script_dinov2_PostAnn_PreTrain.py"
-```
+# Recommended — use the launcher (from project root):
+./exec.bat   # Select option 2
 
-Or use the launcher:
-```bash
-exec.bat   # Select option 2
+# Or run directly (from project root):
+python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"
 ```
 
 #### Interactive Prompts
@@ -301,8 +309,10 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 
 ---
 
-### Script: 1. master_script_dinov2_PostTrain.py
+### Script: master_scripts/1. master_script_dinov2_PostTrain.py
 **Automated POST-TRAINING pipeline** - Analyzes trained model detections on a test video
+
+> **Note**: This script is available for direct use but is **not included in `./exec.bat`** (rarely used). Run it directly from the project root.
 
 #### Features
 Same as pre-training script, plus:
@@ -312,13 +322,8 @@ Same as pre-training script, plus:
 
 #### Quick Start
 ```bash
-# Run and follow interactive prompts:
-python "1. master_script_dinov2_PostTrain.py"
-```
-
-Or use the launcher:
-```bash
-exec.bat   # Select option 3
+# Run directly from project root:
+python "master_scripts/1. master_script_dinov2_PostTrain.py"
 ```
 
 #### Configuration Variables
@@ -813,14 +818,14 @@ pip install reportlab pillow matplotlib pandas
 
 ---
 
-### Script: 1. interactive_cluster_viewer.py (Optional)
+### Script: master_scripts/1. interactive_cluster_viewer.py (Optional)
 **Interactive HTML visualization using Plotly**
 
 Standalone optional tool for exploring clusters interactively. Run after Script 2 (embeddings). Independent of Script 3.
 
 #### Usage
 ```bash
-python "1. interactive_cluster_viewer.py" --root cropped_imgs_by_class
+python "master_scripts/1. interactive_cluster_viewer.py" --root cropped_imgs_by_class
 ```
 
 #### Parameters
@@ -856,14 +861,11 @@ pip install plotly
 
 ### Pre-Training Analysis (Automated)
 ```bash
-# Recommended: Use master script
-python "1. master_script_dinov2_PostAnn_PreTrain.py"
+# Recommended: Use the launcher from project root
+./exec.bat   # Select option 2
 
-# Edit these variables in the script before running:
-# - imgs_label_path
-# - class_names
-# - cropped_bbox_dir
-# - output_cluster_dir
+# Or run directly from project root:
+python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"
 ```
 
 ### Pre-Training Analysis (Manual)
@@ -886,14 +888,8 @@ python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
 
 ### Post-Training Analysis (Automated)
 ```bash
-# Recommended: Use master script
-python "1. master_script_dinov2_PostTrain.py"
-
-# Edit these variables in the script before running:
-# - model_path
-# - video_path
-# - classes_space_separated
-# - per_class_num_frames
+# Run directly from project root (not in ./exec.bat):
+python "master_scripts/1. master_script_dinov2_PostTrain.py"
 ```
 
 ### Post-Training Analysis (Manual)
@@ -912,25 +908,25 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
 
 ## Pipeline Summary
 
-| Script | Input | Output | Purpose | When to Use |
-|--------|-------|--------|---------|-------------|
-| **1. master_script_SigLip_PreAnn.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** (uses SigLIP) | BEFORE annotation |
-| **1. master_script_dinov2_PostAnn_PreTrain.py** | Config variables | Complete analysis | **Automated pre-training pipeline** (uses DINOv2) | AFTER annotation |
-| **1. master_script_dinov2_PostTrain.py** | Config variables | Complete analysis | **Automated post-training pipeline** (uses DINOv2) | AFTER model training |
-| postannotation_scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection | After annotation |
-| postannotation_scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification | After training |
-| postannotation_scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations | Part of pipeline |
-| postannotation_scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis | Part of pipeline |
-| postannotation_scripts/4. generate_pdf.py | Script 1 stats + Script 3 results | PDF report | Professional documentation | Part of pipeline |
-| 1. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration | Optional addon |
+| Script | Input | Output | Purpose | `./exec.bat` |
+|--------|-------|--------|---------|:---:|
+| **master_scripts/1. master_script_SigLip_PreAnn.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** (uses SigLIP) | Option 1 |
+| **master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py** | Interactive prompts | Complete analysis | **Automated pre-training pipeline** (uses DINOv2) | Option 2 |
+| **master_scripts/1. master_script_dinov2_PostTrain.py** | Interactive prompts | Complete analysis | **Automated post-training pipeline** (uses DINOv2) | Direct only |
+| postannotation_scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection | — |
+| postannotation_scripts/1. yolo_model_crop_bbox_per_class.py | Video + YOLO model | Cropped images | Post-training detection verification | — |
+| postannotation_scripts/2. save_dinov2_embeddings_per_class.py | Cropped images | 768D embeddings | Semantic representations | — |
+| postannotation_scripts/3. clustering_of_classes_embeddings.py | Embeddings + images | Clusters + insights | Intra-class variation analysis | — |
+| postannotation_scripts/4. generate_pdf.py | Script 1 stats + Script 3 results | PDF report | Professional documentation | — |
+| master_scripts/1. interactive_cluster_viewer.py | Embeddings | Interactive HTML | Optional: Plotly exploration | — |
 
 ---
 
 ## Key Takeaways
-- 🚀 **Use master scripts** for automated pipeline execution with memory management
-- **Pre-annotation** (NEW): Validate frame quality/diversity BEFORE annotation effort
+- 🚀 **Use `./exec.bat`** — the two most-used pipelines (Pre-Annotation and Post-Annotation/Pre-Training) are available through the launcher menu. Always run from the project root directory.
+- **Pre-annotation**: Validate frame quality/diversity BEFORE annotation effort
 - **Pre-training**: Validate annotation quality and understand labeled patterns AFTER annotation
-- **Post-training**: Verify model detections match expectations AFTER model training
+- **Post-training**: Verify model detections match expectations AFTER model training (run directly, not in `./exec.bat`)
 - **Clustering insights**: Identify sub-groups, outliers, and data quality issues
 - **Actionable**: Adjust augmentation, split classes, or fix annotations based on results
 - ❄️ **Laptop GPU users**: Master scripts include cooling breaks to prevent throttling
