@@ -222,7 +222,7 @@ Coverage gaps: Activity 3 has no bright lighting frames
 
 #### Output Structure
 ```
-frame_analysis_results_siglip_pose_emb/
+preann_results/
 └── PreAnnotation_Quality_Report.pdf
 ```
 
@@ -271,7 +271,7 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 #### Default Values
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cropped_bbox_dir` | `cropped_imgs_by_class` | Output folder for cropped images |
+| `cropped_bbox_dir` | `postann_pretrain_results/cropped_imgs_by_class` | Output folder for cropped images |
 | `batch_size` | `64` | DINOv2 batch size |
 | `save_suffix` | `embeddings_dinov2.npy` | Embeddings filename |
 | `use_embedding_cache` | `True` | Cache embeddings for faster re-runs |
@@ -281,7 +281,7 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 | `epsilon` | `0.15` | DBSCAN eps fallback (only if auto-tune OFF) |
 | `min_pts` | `3` | Min points per cluster |
 | `umap_min_dist` | `0.05` | UMAP min_dist (0.0=tight, 0.1=loose) |
-| `output_cluster_dir` | `clustering_results_txt_files` | Clustering results folder |
+| `output_cluster_dir` | `postann_pretrain_results/clustering_results_txt_files` | Clustering results folder |
 | `max_cluster_samples` | `20` | Max sample images per cluster |
 | `pdf_generate` | `True` | Generate PDF report |
 | `pdf_name` | `PDF_REPORT` | Output PDF filename (no extension) |
@@ -329,18 +329,20 @@ python "master_scripts/1. master_script_dinov2_PostTrain.py"
 #### Configuration Variables
 ```python
 ## GLOBAL VARIABLES POST-TRAINING ##
+RESULTS_DIR = "posttrain_results"
 model_path = "path/to/model.pt"
 video_path = "path/to/video.mp4"
 classes_space_separated = ["class0", "class1", "class2"]
-per_class_num_frames = "1000"  # Target samples per class
-conf_thresh = "0.4"
-frame_stride_per_video = "3"  # Process every 3rd frame
-cropped_bbox_dir = "cropped_images"
-batch_size = "32"
-epsilon = "0.15"
-min_pts = "3"
-output_cluster_dir = "clustering_results"
-max_cluster_samples = "5"
+per_class_num_frames = 1000      # Target samples per class
+conf_thresh = 0.4
+frame_stride_per_video = 3       # Process every 3rd frame
+cropped_bbox_dir = os.path.join(RESULTS_DIR, "cropped_images")
+batch_size = 32
+save_suffix = "embeddings_dinov2.npy"
+epsilon = 0.15
+min_pts = 3
+output_cluster_dir = os.path.join(RESULTS_DIR, "clustering_results")
+max_cluster_samples = 5
 ```
 
 #### Pipeline Steps
@@ -538,7 +540,7 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
 ```
 cropped_images/
 ├── class1/
-│   ├── frame_001_1.png
+│   ├── frame_000001.png
 │   └── ...
 └── class2/
 ```
@@ -552,13 +554,13 @@ This script processes cropped object images and uses DINOv2 model to generate em
 
 #### Usage
 ```bash
-python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_images --batch 32
+python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_imgs_by_class --batch 32
 ```
 
 #### Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--root` | `cropped_images` | Root folder with class subfolders |
+| `--root` | `cropped_imgs_by_class` | Root folder with class subfolders |
 | `--batch` | 32 | Batch size for inference |
 | `--save_suffix` | `embeddings_dinov2.npy` | Filename for embeddings |
 | `--use_cache` | False | Skip generation if embeddings already exist (faster re-runs) |
@@ -620,19 +622,19 @@ python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./
 #### Basic Usage
 ```bash
 # Auto-tuning (recommended)
-python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_imgs_by_class --auto_tune --min_samples 3
 
 # Manual epsilon
-python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --eps 0.15 --min_samples 3
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_imgs_by_class --eps 0.15 --min_samples 3
 
 # Full analysis with visualizations
-python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_images --auto_tune --min_samples 3 --save_montage --cross_class
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_imgs_by_class --auto_tune --min_samples 3 --save_montage --cross_class
 ```
 
 #### Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--root` | `cropped_images` | Root folder with embeddings |
+| `--root` | `cropped_imgs_by_class` | Root folder with embeddings |
 | `--eps` | 0.15 | Max distance for neighbors (cosine) |
 | `--min_samples` | 3 | Min points to form cluster |
 | `--auto_tune` | False | Auto-find optimal eps per class |
@@ -825,14 +827,14 @@ Standalone optional tool for exploring clusters interactively. Run after Script 
 
 #### Usage
 ```bash
-python "master_scripts/1. interactive_cluster_viewer.py" --root cropped_imgs_by_class
+python "master_scripts/1. interactive_cluster_viewer.py" --root postann_pretrain_results/cropped_imgs_by_class
 ```
 
 #### Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--root` | `cropped_images` | Root folder with embeddings |
-| `--output_dir` | `clustering_results` | Output directory for HTML files |
+| `--root` | `postann_pretrain_results/cropped_imgs_by_class` | Root folder with embeddings |
+| `--output_dir` | `postann_pretrain_results/clustering_results` | Output directory for HTML files |
 | `--min_samples` | 3 | DBSCAN min_samples |
 | `--eps` | auto | DBSCAN eps (auto-tuned if not provided) |
 
@@ -844,7 +846,7 @@ python "master_scripts/1. interactive_cluster_viewer.py" --root cropped_imgs_by_
 
 #### Output
 ```
-clustering_results/
+postann_pretrain_results/clustering_results/
 ├── person_interactive.html
 ├── hands_interactive.html
 └── ...
@@ -874,15 +876,16 @@ python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"
 python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" \
     --imgs_label_path "./LabelledData" \
     --classes 0 1 2 \
-    --class_ids_to_names 0 class0 1 class1 2 class2
+    --class_ids_to_names 0 class0 1 class1 2 class2 \
+    --output_dir postann_pretrain_results/cropped_imgs_by_class
 
 # 2. Generate embeddings
 python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" \
-    --root ./cropped_imgs_by_class --batch 32
+    --root ./postann_pretrain_results/cropped_imgs_by_class --batch 32
 
 # 3. Analyze clusters
 python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
-    --root ./cropped_imgs_by_class \
+    --root ./postann_pretrain_results/cropped_imgs_by_class \
     --auto_tune --min_samples 3 --save_montage
 ```
 
@@ -899,9 +902,10 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
     --model "model.pt" \
     --video "video.mp4" \
     --classes class0 class1 class2 \
-    --num_frames 200
+    --num_frames 200 \
+    --output posttrain_results/cropped_images
 
-# 2-3. Same as pre-training (use --root ./cropped_images)
+# 2-3. Same as pre-training (use --root ./posttrain_results/cropped_images)
 ```
 
 ---

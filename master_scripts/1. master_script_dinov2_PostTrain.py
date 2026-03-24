@@ -96,22 +96,26 @@ def main():
     ## ---------------------------------##
     ##         GLOBAL VARIABLES         ##
     ## ---------------------------------##
+    RESULTS_DIR = "posttrain_results"
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
+
     model_path = r"path/to/your/model.pt"  # Replace with your YOLO model path
     video_path = r"path/to/your/video.mp4"  # Replace with your video file path
     classes_space_separated = ["class0", "class1", "class2"]  # Replace with your class names
     per_class_num_frames = 1000
     conf_thresh = 0.4
     frame_stride_per_video = 3
-    cropped_bbox_dir = "cropped_images"
+    cropped_bbox_dir = os.path.join(RESULTS_DIR, "cropped_images")
 
     batch_size = 32
     save_suffix = "embeddings_dinov2.npy"
 
     epsilon = 0.15
     min_pts = 3
-    output_cluster_dir = "clustering_results"
+    output_cluster_dir = os.path.join(RESULTS_DIR, "clustering_results")
     max_cluster_samples = 5
-    
+
 
     # GPU specs print
     print("="*60)

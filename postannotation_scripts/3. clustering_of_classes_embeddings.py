@@ -329,7 +329,7 @@ def analyze_cross_class_separability(X, y, class_names, eps, min_samples, output
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=str, default="cropped_images")
+    parser.add_argument("--root", type=str, default="cropped_imgs_by_class")
     parser.add_argument("--eps", type=float, default=0.15, help="DBSCAN eps for cosine distance (try 0.1-0.3)")
     parser.add_argument("--min_samples", type=int, default=3, help="Min samples to form cluster")
     parser.add_argument("--auto_tune", action="store_true", help="Automatically find optimal eps for each class")
@@ -347,7 +347,7 @@ def main():
     
     # Create output directory
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     # Load all embeddings
     root = Path(args.root)

@@ -15,7 +15,7 @@ For each class it:
  - saves embeddings to: cropped_images/<class_name>/embeddings_dinov2.npy
 
 Usage:
-    python save_dinov2_embeddings_per_class.py --root ./cropped_images --batch 32
+    python save_dinov2_embeddings_per_class.py --root ./cropped_imgs_by_class --batch 32
 """
 
 import argparse
@@ -117,7 +117,7 @@ def compute_embeddings_for_paths(paths, processor, model, device, batch_size):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=str, default="cropped_images", help="Root folder with per-class subfolders")
+    parser.add_argument("--root", type=str, default="cropped_imgs_by_class", help="Root folder with per-class subfolders")
     parser.add_argument("--batch", type=int, default=32, help="Batch size for model inference")
     parser.add_argument("--save_suffix", type=str, default="embeddings_dinov2.npy", help="Filename used to save embeddings in each class folder")
     parser.add_argument("--use_cache", action="store_true", help="Skip embedding generation if file already exists (faster for re-runs)")

@@ -5,7 +5,7 @@ Generates interactive HTML visualizations from existing embeddings.
 Run AFTER Script 2 (embeddings generated). Independent of Script 3.
 
 Usage:
-    python "master_scripts/1. interactive_cluster_viewer.py" --root "cropped_imgs_by_class" --output_dir "interactive_clusters_results" --min_samples 3
+    python "master_scripts/1. interactive_cluster_viewer.py" --root "postann_pretrain_results/cropped_imgs_by_class" --output_dir "postann_pretrain_results/clustering_results" --min_samples 3
 
 Features:
     - Hover over points to see filename
@@ -121,15 +121,15 @@ def create_interactive_plot(embeddings, image_files, class_name, output_path, ep
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=str, default="cropped_images", help="Root folder with per-class subfolders")
-    parser.add_argument("--output_dir", type=str, default="clustering_results", help="Output directory for HTML files")
+    parser.add_argument("--root", type=str, default="postann_pretrain_results/cropped_imgs_by_class", help="Root folder with per-class subfolders")
+    parser.add_argument("--output_dir", type=str, default="postann_pretrain_results/clustering_results", help="Output directory for HTML files")
     parser.add_argument("--min_samples", type=int, default=3, help="DBSCAN min_samples")
     parser.add_argument("--eps", type=float, default=None, help="DBSCAN eps (auto-tuned if not provided)")
     args = parser.parse_args()
 
     root = Path(args.root)
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
     print("INTERACTIVE CLUSTER VIEWER")

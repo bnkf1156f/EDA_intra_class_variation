@@ -58,21 +58,21 @@ python "master_scripts/1. master_script_SigLip_PreAnn.py"
 **Pre-training workflow** (annotated images → clustering):
 ```bash
 # Step 1: Pre-training - crop from annotations
-python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" --imgs_label_path "path/to/LabelledData" --classes 0 1 2 --class_ids_to_names 0 board 1 screw 2 holder --output_dir cropped_imgs
+python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" --imgs_label_path "path/to/LabelledData" --classes 0 1 2 --class_ids_to_names 0 board 1 screw 2 holder --output_dir postann_pretrain_results/cropped_imgs_by_class
 
 # Step 2: Generate DINOv2 embeddings
-python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./cropped_imgs --batch 32
+python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./postann_pretrain_results/cropped_imgs_by_class --batch 32
 
 # Step 3: DBSCAN clustering analysis
-python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./cropped_imgs --auto_tune --min_samples 3 --save_montage --cross_class
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./postann_pretrain_results/cropped_imgs_by_class --auto_tune --min_samples 3 --save_montage --cross_class
 ```
 
 **Post-training workflow** (video + model → clustering):
 ```bash
 # Step 1: Post-training - crop from video using model
-python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" --model model.pt --video video.mp4 --classes board screw holder --num_frames 100 --frame_stride 3
+python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" --model model.pt --video video.mp4 --classes board screw holder --num_frames 100 --frame_stride 3 --output posttrain_results/cropped_images
 
-# Steps 2-3: Same as pre-training (use --root ./cropped_images)
+# Steps 2-3: Same as pre-training (use --root ./posttrain_results/cropped_images)
 ```
 
 ## Architecture
@@ -93,7 +93,7 @@ Input: Raw frames (.png, .jpg, .jpeg)
     - Visual montages per activity
     |
     v
-Output: PreAnnotation_Quality_Report.pdf (5 pages)
+Output: preann_results/PreAnnotation_Quality_Report.pdf (5 pages)
     - Executive summary with quality score
     - Quality metrics dashboard
     - Activity diversity analysis with UMAP
@@ -102,26 +102,29 @@ Output: PreAnnotation_Quality_Report.pdf (5 pages)
 ```
 
 **Pre-training/Post-training workflow**:
+
+Each master script defines its own `RESULTS_DIR` (`postann_pretrain_results/` for pre-training, `posttrain_results/` for post-training). All outputs go under that directory. Below uses `<results>/` as placeholder:
+
 ```
 Input (annotated images OR video+model)
     |
     v
-[Script 1] Crop bounding boxes per class --> cropped_imgs/<class>/*.png
-                                             temp_ann_file.txt (statistics)
+[Script 1] Crop bounding boxes per class --> <results>/cropped_imgs_by_class/<class>/*.png
+                                             <results>/temp_ann_file.txt (statistics, pre-training only)
     |
     v
-[Script 2] DINOv2 embeddings --> cropped_imgs/<class>/embeddings_dinov2.npy
-                                 cropped_imgs/<class>/embeddings_dinov2_image_list.txt
+[Script 2] DINOv2 embeddings --> <results>/cropped_imgs_by_class/<class>/embeddings_dinov2.npy
+                                 <results>/cropped_imgs_by_class/<class>/embeddings_dinov2_image_list.txt
     |
     v
-[Script 3] DBSCAN clustering --> clustering_results/<class>_clusters.png
-                                 clustering_results/<class>_montage.png
-                                 clustering_results/<class>_samples/cluster_N/
-                                 clustering_results/cluster_statistics.csv
+[Script 3] DBSCAN clustering --> <results>/clustering_results/<class>_clusters.png
+                                 <results>/clustering_results/<class>_montage.png
+                                 <results>/clustering_results/<class>_samples/cluster_N/
+                                 <results>/clustering_results/cluster_statistics.csv
     |
     v (optional)
-[Script 4] PDF report generator --> output.pdf (combines Script 1 + 3 results)
-[Script 5] Interactive viewer --> clustering_results/<class>_interactive.html
+[Script 4] PDF report generator --> <results>/clustering_results/output.pdf (combines Script 1 + 3 results)
+[Script 5] Interactive viewer --> <results>/clustering_results/<class>_interactive.html
 ```
 
 ### Key Data Structures
@@ -220,11 +223,11 @@ All parameters are configured via interactive prompts. Clustering params are alw
 ## File Naming Patterns
 
 ### Pre-Annotation Script
-- Output: `frame_analysis_results_siglip_pose_emb/PreAnnotation_Quality_Report.pdf`
+- Output: `preann_results/PreAnnotation_Quality_Report.pdf`
 - Temp files: `temp_preannotation_charts/` (auto-cleaned after PDF generation)
 - Embedding files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (uses SigLIP embeddings, should be deleted before next run!)
 
-### Pre-Training/Post-Training Scripts
+### Pre-Training/Post-Training Scripts (under `postann_pretrain_results/` or `posttrain_results/` respectively)
 - Script 1a outputs: `{basename}_crop_{idx}.png` + `temp_ann_file.txt`
 - Script 1b outputs: `frame_{frame_idx:06d}.png`
 - Script 2 outputs: `{save_suffix}.npy` + `{save_suffix_without_.npy}_image_list.txt`

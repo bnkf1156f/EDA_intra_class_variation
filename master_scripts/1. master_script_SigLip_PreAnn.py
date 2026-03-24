@@ -908,6 +908,13 @@ def main():
     frames_dir = _prompt_path("Path to frames folder:", must_exist_dir=True)
 
     ## -----------------------------------------------##
+    ##   RESULTS DIRECTORY (fixed, not changeable)      ##
+    ## -----------------------------------------------##
+    RESULTS_DIR = "preann_results"
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
+
+    ## -----------------------------------------------##
     ##   OPTIONAL PARAMETERS                           ##
     ## -----------------------------------------------##
 
@@ -939,7 +946,6 @@ def main():
         pdf_image_quality        = int(_prompt_text("PDF image JPEG quality (1-100)", 70))
         grid_cols_activities     = int(_prompt_text("Grid columns for activity montages in PDF", 4))
         grid_cols_blurry         = int(_prompt_text("Grid columns for blurry montage in PDF", 4))
-        output_dir               = _prompt_text("Output directory for results", "frame_analysis_results_siglip_pose_emb")
         pdf_name                 = _prompt_text("Output PDF filename", "PreAnnotation_Quality_Report.pdf")
     else:
         cache_blurry_num_samples = 24
@@ -948,8 +954,9 @@ def main():
         pdf_image_quality        = 70
         grid_cols_activities     = 4
         grid_cols_blurry         = 4
-        output_dir               = "frame_analysis_results_siglip_pose_emb"
         pdf_name                 = "PreAnnotation_Quality_Report.pdf"
+
+    output_dir = RESULTS_DIR
 
     use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
 

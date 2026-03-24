@@ -169,6 +169,13 @@ def main():
     print(f"\n✅  Loaded {len(class_names)} classes from {classes_txt}")
 
     ## -----------------------------------------------##
+    ##   RESULTS DIRECTORY (fixed, not changeable)      ##
+    ## -----------------------------------------------##
+    RESULTS_DIR = "postann_pretrain_results"
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
+
+    ## -----------------------------------------------##
     ##   OPTIONAL PARAMETERS                           ##
     ## -----------------------------------------------##
 
@@ -177,12 +184,12 @@ def main():
 
     # Embedding Handling
     if change_defaults:
-        cropped_bbox_dir    = _prompt_text("Output folder for cropped images", "cropped_imgs_by_class")
+        cropped_bbox_dir    = os.path.join(RESULTS_DIR, _prompt_text("Subfolder for cropped images", "cropped_imgs_by_class"))
         batch_size          = int(_prompt_text("DINOv2 batch size (reduce if GPU OOM)", 64))
         save_suffix         = _prompt_text("Embeddings filename", "embeddings_dinov2.npy")
         use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
     else:
-        cropped_bbox_dir    = "cropped_imgs_by_class"
+        cropped_bbox_dir    = os.path.join(RESULTS_DIR, "cropped_imgs_by_class")
         batch_size          = 64
         save_suffix         = "embeddings_dinov2.npy"
         use_embedding_cache = True
@@ -202,7 +209,7 @@ def main():
     if change_defaults:
         min_pts             = int(_prompt_text("Min points per cluster", 3))
         umap_min_dist       = float(_prompt_text("UMAP min_dist (lower=tighter packing)", 0.05))
-        output_cluster_dir  = _prompt_text("Output folder for clustering results", "clustering_results_txt_files")
+        output_cluster_dir  = os.path.join(RESULTS_DIR, _prompt_text("Subfolder for clustering results", "clustering_results_txt_files"))
         max_cluster_samples = int(_prompt_text("Max sample images saved per cluster", 20))
 
         # Uniform class handling
@@ -212,14 +219,14 @@ def main():
     else:
         min_pts             = 3
         umap_min_dist       = 0.05
-        output_cluster_dir  = "clustering_results_txt_files"
+        output_cluster_dir  = os.path.join(RESULTS_DIR, "clustering_results_txt_files")
         max_cluster_samples = 20
         uniform_class_eps_threshold     = 0.1
         uniform_class_downsample_target = 4000
         uniform_class_min_samples       = 12000
 
     # PDF handling
-    temp_file    = "temp_ann_file.txt"
+    temp_file    = os.path.join(RESULTS_DIR, "temp_ann_file.txt")
     pdf_generate = _ask(questionary.confirm("Generate PDF report?", default=True))
     pdf_name     = _prompt_text("Output PDF filename (no extension)", "PDF_REPORT") if pdf_generate else "PDF_REPORT"
 

@@ -14,7 +14,12 @@ models/
 *.mov
 *.mkv
 
-# Output directories
+# Output directories (hidden result folders)
+postann_pretrain_results/
+posttrain_results/
+preann_results/
+
+# Legacy output directories (in case run manually)
 cropped_images/
 cropped_imgs/
 cropped_imgs_by_class*/
