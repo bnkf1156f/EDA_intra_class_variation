@@ -163,6 +163,14 @@ def main():
 
     imgs_path   = _prompt_path("Path to images folder:", must_exist_dir=True)
     label_path  = _prompt_path("Path to labels folder (can be same as images):", must_exist_dir=True)
+
+    # Detect train/val/test splits
+    _splits = [s for s in ['train', 'val']
+               if os.path.isdir(os.path.join(imgs_path, s)) and os.path.isdir(os.path.join(label_path, s))]
+    if _splits:
+        print(f"\n📂  Detected dataset splits: {', '.join(_splits)}")
+        print(f"    Images and labels from all splits will be processed together")
+
     classes_txt = _prompt_path("Path to classes.txt file:", must_exist_file=True)
 
     class_names = _load_classes_txt(classes_txt)

@@ -5,6 +5,7 @@ This script processes YOLO-format labelled images (.png/.jpg and .txt pairs), an
 cropped object images from bounding boxes for specified class IDs.
 
 Images and labels can be in the same folder or separate folders.
+Supports train/val/test split directories automatically.
 
 Usage (same folder):
     python "ann_txt_files_crop_bbox.py" \
@@ -20,6 +21,16 @@ Usage (separate folders):
         --classes 0 1 2 \
         --class_ids_to_names 0 class0 1 class1 2 class2 \
         --output_dir cropped_imgs_by_class
+
+Usage (split dataset - auto-detected):
+    python "ann_txt_files_crop_bbox.py" \
+        --imgs_path "path/to/images"   \
+        --label_path "path/to/labels"  \
+        --classes 0 1 2 \
+        --class_ids_to_names 0 class0 1 class1 2 class2 \
+        --output_dir cropped_imgs_by_class
+    # If images/train/, images/val/, labels/train/, labels/val/ exist,
+    # both splits are processed automatically.
 
 This script:
  - Validates dataset consistency (ensures each image has a label file and vice versa)
@@ -50,6 +61,22 @@ def yolo_to_bbox(x_center, y_center, width, height, img_width, img_height):
 
     return x1, y1, x2, y2
 
+
+def _detect_splits(imgs_dir, label_dir):
+    """Detect train/val/test split subdirectories.
+    Returns list of (split_name, img_split_dir, label_split_dir).
+    If no splits found, returns [('', imgs_dir, label_dir)]."""
+    splits = []
+    for split in ['train', 'val', 'test']:
+        si = os.path.join(imgs_dir, split)
+        sl = os.path.join(label_dir, split)
+        if os.path.isdir(si) and os.path.isdir(sl):
+            splits.append((split, si, sl))
+    if splits:
+        return splits
+    return [('', imgs_dir, label_dir)]
+
+
 def main():
     p = argparse.ArgumentParser(description="Labelled Frames -> sampled cropped images by class")
     p.add_argument("--imgs_label_path", help="Path containing both images AND labels (use this OR --imgs_path + --label_path)")
@@ -74,134 +101,16 @@ def main():
     for path, name in [(imgs_dir, "imgs"), (label_dir, "label")]:
         if not os.path.exists(path):
             raise OSError(f"{name.upper()} PATH DOESN'T EXIST: {path}")
-    
-    print("\n------------------------------------------------------------")
-    print("|                     CHECKING DATASET                     |")
-    print("------------------------------------------------------------")
-    img_files = [f for f in os.listdir(imgs_dir) if f.endswith((".png", ".jpg", ".jpeg"))]
-    txt_files = [f for f in os.listdir(label_dir) if f.endswith(".txt")]
-    missing_txts = []
-    for img in img_files:
-        base_name = os.path.splitext(img)[0]
-        txt_exp_file = base_name + ".txt"
-        if txt_exp_file not in txt_files:
-            missing_txts.append(txt_exp_file)
 
-    missing_imgs = []
-    for txt in txt_files:
-        if txt == "classes.txt" or txt.endswith("_image_list.txt"):
-            print(f"✅  IGNORE NON-ANNOTATION FILE: {txt}")
-            continue
-
-        base_name = os.path.splitext(txt)[0]
-        found = False
-        for ext in [".png", ".jpg", ".jpeg"]:
-            img_exp_file = base_name + ext
-            if img_exp_file in img_files:
-                found = True
-                break
-        if not found:
-            missing_imgs.append(txt)
-
-    if missing_imgs:
-        print(missing_imgs)
-        raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES")
-    elif missing_txts:
-        print(f"⚠️  NUMBER OF BACKGROUND PNG FILES WITH NO ANNOTATION/TXT FILE: {len(missing_txts)}\n")
-    else:
-        print(f"✅  ALL PNG FILES HAVE THEIR CORRESPONDING TXT FILES\n")
+    # Detect train/val/test splits
+    split_dirs = _detect_splits(imgs_dir, label_dir)
+    has_splits = split_dirs[0][0] != ''
+    if has_splits:
+        print(f"\n📂  Detected dataset splits: {', '.join(s[0] for s in split_dirs)}")
+        print(f"    Processing all splits into combined output\n")
 
     ## CHECK FOR CLASSES
     class_map = dict(zip(args.class_ids_to_names[::2], args.class_ids_to_names[1::2]))
-
-    # =========================================================================
-    # DATASET VALIDATION: Scan for unexpected class IDs and class distribution
-    # =========================================================================
-    print("\n------------------------------------------------------------")
-    print("|                 VALIDATING ANNOTATIONS                   |")
-    print("------------------------------------------------------------")
-
-    # Statistics tracking variables (used in both validation and processing)
-    unexpected_classes = {}  # {class_id: [list of files]}
-    class_annotation_counts = {}  # {class_id: count} for ALL classes found
-    empty_annotation_files = []  # Files with no annotations
-    invalid_annotation_files = []  # Files with malformed annotations (< 5 parts or ValueError)
-    error_reading_files = []  # Files that couldn't be read by cv2.imread
-    empty_crop_files = []  # Annotations that produced zero-size crops
-
-    for txt_file in txt_files:
-        if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
-            continue
-        txt_path = os.path.join(label_dir, txt_file)
-        with open(txt_path, 'r') as f:
-            lines = f.readlines()
-
-        if len(lines) == 0:
-            empty_annotation_files.append(txt_file)
-            continue
-
-        for line in lines:
-            parts = line.strip().split()
-            if len(parts) < 5:
-                print(f"⚠️  Invalid Annotation File: {txt_file}")
-                if txt_file not in invalid_annotation_files:
-                    invalid_annotation_files.append(txt_file)
-                continue
-            class_id = parts[0]
-
-            # Count all annotations
-            class_annotation_counts[class_id] = class_annotation_counts.get(class_id, 0) + 1
-
-            # Check if class is unexpected (not in our mapping)
-            if class_id not in class_map:
-                if class_id not in unexpected_classes:
-                    unexpected_classes[class_id] = []
-                if txt_file not in unexpected_classes[class_id]:
-                    unexpected_classes[class_id].append(txt_file)
-
-    # Report unexpected classes
-    if unexpected_classes:
-        print(f"\n❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):")
-        print(f"    Expected class IDs: 0 to {len(class_map) - 1}")
-        print(f"    -----------------------------------------------")
-        for cls_id, files in unexpected_classes.items():
-            count = class_annotation_counts.get(cls_id, 0)
-            print(f"    Class ID '{cls_id}': {count} annotations in {len(files)} file(s)")
-            # Show all files where invalid annotation
-            for f in files:
-                print(f"        - {f}")
-        raise RuntimeError(f"\n    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!")
-    else:
-        print(f"✅  All annotations use valid class IDs")
-
-    # Report class distribution
-    print(f"\n📊  CLASS DISTRIBUTION (all annotations in dataset):")
-    expected_ids = set(class_map.keys())
-    total_annotations = sum(class_annotation_counts.values())
-
-    for cls_id in sorted(class_annotation_counts.keys(), key=lambda x: int(x) if x.isdigit() else float('inf')):
-        count = class_annotation_counts[cls_id]
-        percentage = (count / total_annotations * 100) if total_annotations > 0 else 0
-        name = class_map.get(cls_id, "UNKNOWN")
-        marker = "⚠️ " if cls_id not in expected_ids else "   "
-        print(f"{marker} Class {cls_id} ({name}): {count} annotations ({percentage:.1f}%)")
-
-    # Class imbalance warning
-    if class_annotation_counts:
-        counts = [class_annotation_counts.get(c, 0) for c in expected_ids]
-        counts = [c for c in counts if c > 0]  # Only count classes that exist
-        if counts:
-            max_count = max(counts)
-            min_count = min(counts)
-            if min_count > 0 and max_count / min_count > 10:
-                print(f"\n⚠️  CLASS IMBALANCE WARNING: Ratio {max_count}:{min_count} = {max_count/min_count:.1f}x")
-                print(f"    Consider balancing your dataset for better YOLO training.")
-
-    # Empty files warning
-    if empty_annotation_files:
-        print(f"\n⚠️  {len(empty_annotation_files)} annotation file(s) are empty (no objects labelled)")
-
-    print("------------------------------------------------------------\n")
     classes_to_target = set(args.classes)
 
     missing_in_map = [cls for cls in classes_to_target if cls not in class_map]
@@ -210,108 +119,264 @@ def main():
             f"Class ID(s) {missing_in_map} are not present in class_ids_to_names mapping. "
             f"Available keys: {list(class_map.keys())}"
         )
-    
+
     ## CREATE OUTPUT DIRECTORIES
     output_base = args.output_dir
     os.makedirs(output_base, exist_ok=True)
-    
+
     for class_id in classes_to_target:
         class_name = class_map[class_id]
         class_dir = os.path.join(output_base, f"{class_name}")
         os.makedirs(class_dir, exist_ok=True)
-    
-    print("\n------------------------------------------------------------")
-    print("|                  PROCESSING ANNOTATIONS                  |")
-    print("------------------------------------------------------------")
 
-    ## WALK THROUGH WHOLE DATASET
+    # Accumulators across all splits
+    total_img_count = 0
+    total_txt_count = 0
+    all_missing_txts = []
+    unexpected_classes = {}
+    class_annotation_counts = {}
+    empty_annotation_files = []
+    invalid_annotation_files = []
+    error_reading_files = []
+    empty_crop_files = []
     crop_counts = {cls: 0 for cls in classes_to_target}
 
-    for txt_file in tqdm(txt_files, desc="Processing annotations", unit="file"):
-        if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
-            continue
+    # =========================================================================
+    # PROCESS EACH SPLIT
+    # =========================================================================
+    for split_name, split_imgs_dir, split_label_dir in split_dirs:
+        split_label = f" [{split_name}]" if split_name else ""
 
-        txt_path = os.path.join(label_dir, txt_file)
+        print("\n------------------------------------------------------------")
+        print(f"|                     CHECKING DATASET{split_label:>22} |")
+        print("------------------------------------------------------------")
+        img_files = [f for f in os.listdir(split_imgs_dir) if f.endswith((".png", ".jpg", ".jpeg"))]
+        txt_files = [f for f in os.listdir(split_label_dir) if f.endswith(".txt")]
+        img_files_set = set(img_files)
+        txt_files_set = set(txt_files)
 
-        # Find corresponding image
-        base_name = os.path.splitext(txt_file)[0]
-        img_file = None
-        for ext in [".png", ".jpg", ".jpeg"]:
-            candidate = base_name + ext
-            if candidate in img_files:
-                img_file = candidate
-                break
-        
-        if not img_file:
-            continue
-        
-        img_path = os.path.join(imgs_dir, img_file)
-        img = cv2.imread(img_path)
+        total_img_count += len(img_files)
+        total_txt_count += len([t for t in txt_files if t != 'classes.txt' and not t.endswith('_image_list.txt')])
 
-        if img is None:
-            print(f"\n⚠️  Could not read image: {img_file}")
-            error_reading_files.append(img_file)
-            continue
-        
-        img_height, img_width = img.shape[:2]
-        
-        # Parse annotations
-        with open(txt_path, 'r') as f:
-            lines = f.readlines()
-        
-        for idx, line in enumerate(lines):
-            parts = line.strip().split()
-            if len(parts) < 5:
-                if txt_file not in invalid_annotation_files:
-                    invalid_annotation_files.append(txt_file)
-                continue
-            
-            class_id = parts[0]
-            if class_id not in classes_to_target:
-                continue
-            
-            try:
-                x_center = float(parts[1])
-                y_center = float(parts[2])
-                width = float(parts[3])
-                height = float(parts[4])
-            except ValueError:
-                print(f"⚠️  Invalid annotation in {txt_file}: {line.strip()}")
-                if txt_file not in invalid_annotation_files:
-                    invalid_annotation_files.append(txt_file)
-                continue
-            
-            # Convert to pixel coordinates
-            x1, y1, x2, y2 = yolo_to_bbox(x_center, y_center, width, height, img_width, img_height)
-            
-            # Ensure coordinates are within image bounds
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-            x2 = min(img_width, x2)
-            y2 = min(img_height, y2)
-            
-            # Crop the image
-            cropped = img[y1:y2, x1:x2]
+        missing_txts = []
+        for img in img_files:
+            base_name = os.path.splitext(img)[0]
+            txt_exp_file = base_name + ".txt"
+            if txt_exp_file not in txt_files_set:
+                missing_txts.append(txt_exp_file)
 
-            if cropped.size == 0:
-                print(f"\n⚠️  Empty crop from {img_file} for class {class_id}")
-                empty_crop_files.append(f"{img_file} (class {class_id})")
+        missing_imgs = []
+        for txt in txt_files:
+            if txt == "classes.txt" or txt.endswith("_image_list.txt"):
+                print(f"✅  IGNORE NON-ANNOTATION FILE: {txt}")
                 continue
-            
-            # Save cropped image
-            class_name = class_map[class_id]
-            output_dir = os.path.join(output_base, f"{class_name}")
-            base_name = os.path.splitext(img_file)[0]
-            output_filename = f"{base_name}_crop_{idx}.png"
-            output_path = os.path.join(output_dir, output_filename)
-            
-            cv2.imwrite(output_path, cropped)
-            crop_counts[class_id] += 1
+
+            base_name = os.path.splitext(txt)[0]
+            found = False
+            for ext in [".png", ".jpg", ".jpeg"]:
+                img_exp_file = base_name + ext
+                if img_exp_file in img_files_set:
+                    found = True
+                    break
+            if not found:
+                missing_imgs.append(txt)
+
+        if missing_imgs:
+            print(missing_imgs)
+            raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES{split_label}")
+        elif missing_txts:
+            print(f"⚠️  NUMBER OF BACKGROUND PNG FILES WITH NO ANNOTATION/TXT FILE: {len(missing_txts)}\n")
+        else:
+            print(f"✅  ALL PNG FILES HAVE THEIR CORRESPONDING TXT FILES\n")
+
+        all_missing_txts.extend(f"{split_name}/{t}" if split_name else t for t in missing_txts)
+
+        # =================================================================
+        # DATASET VALIDATION
+        # =================================================================
+        print("\n------------------------------------------------------------")
+        print(f"|                 VALIDATING ANNOTATIONS{split_label:>20} |")
+        print("------------------------------------------------------------")
+
+        for txt_file in txt_files:
+            if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
+                continue
+            txt_path = os.path.join(split_label_dir, txt_file)
+            with open(txt_path, 'r') as f:
+                lines = f.readlines()
+
+            if len(lines) == 0:
+                empty_annotation_files.append(f"{split_name}/{txt_file}" if split_name else txt_file)
+                continue
+
+            for line in lines:
+                parts = line.strip().split()
+                if len(parts) < 5:
+                    print(f"⚠️  Invalid Annotation File: {txt_file}")
+                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
+                    if entry not in invalid_annotation_files:
+                        invalid_annotation_files.append(entry)
+                    continue
+                class_id = parts[0]
+
+                class_annotation_counts[class_id] = class_annotation_counts.get(class_id, 0) + 1
+
+                if class_id not in class_map:
+                    if class_id not in unexpected_classes:
+                        unexpected_classes[class_id] = []
+                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
+                    if entry not in unexpected_classes[class_id]:
+                        unexpected_classes[class_id].append(entry)
+
+        # Report unexpected classes
+        if unexpected_classes:
+            print(f"\n❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):")
+            print(f"    Expected class IDs: 0 to {len(class_map) - 1}")
+            print(f"    -----------------------------------------------")
+            for cls_id, files in unexpected_classes.items():
+                count = class_annotation_counts.get(cls_id, 0)
+                print(f"    Class ID '{cls_id}': {count} annotations in {len(files)} file(s)")
+                for f in files:
+                    print(f"        - {f}")
+            raise RuntimeError(f"\n    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!")
+        else:
+            print(f"✅  All annotations use valid class IDs")
+
+        # Report class distribution
+        print(f"\n📊  CLASS DISTRIBUTION (all annotations in dataset so far):")
+        expected_ids = set(class_map.keys())
+        total_annotations = sum(class_annotation_counts.values())
+
+        for cls_id in sorted(class_annotation_counts.keys(), key=lambda x: int(x) if x.isdigit() else float('inf')):
+            count = class_annotation_counts[cls_id]
+            percentage = (count / total_annotations * 100) if total_annotations > 0 else 0
+            name = class_map.get(cls_id, "UNKNOWN")
+            marker = "⚠️ " if cls_id not in expected_ids else "   "
+            print(f"{marker} Class {cls_id} ({name}): {count} annotations ({percentage:.1f}%)")
+
+        # Class imbalance warning
+        if class_annotation_counts:
+            counts = [class_annotation_counts.get(c, 0) for c in expected_ids]
+            counts = [c for c in counts if c > 0]
+            if counts:
+                max_count = max(counts)
+                min_count = min(counts)
+                if min_count > 0 and max_count / min_count > 10:
+                    print(f"\n⚠️  CLASS IMBALANCE WARNING: Ratio {max_count}:{min_count} = {max_count/min_count:.1f}x")
+                    print(f"    Consider balancing your dataset for better YOLO training.")
+
+        if empty_annotation_files:
+            print(f"\n⚠️  {len(empty_annotation_files)} annotation file(s) are empty (no objects labelled)")
+
+        print("------------------------------------------------------------\n")
+
+        # =================================================================
+        # PROCESSING ANNOTATIONS (crop images)
+        # =================================================================
+        print("\n------------------------------------------------------------")
+        print(f"|                  PROCESSING ANNOTATIONS{split_label:>19} |")
+        print("------------------------------------------------------------")
+
+        # Filename prefix to avoid collisions across splits
+        fname_prefix = f"{split_name}_" if split_name else ""
+
+        for txt_file in tqdm(txt_files, desc=f"Processing annotations{split_label}", unit="file"):
+            if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
+                continue
+
+            txt_path = os.path.join(split_label_dir, txt_file)
+
+            # Find corresponding image
+            base_name = os.path.splitext(txt_file)[0]
+            img_file = None
+            for ext in [".png", ".jpg", ".jpeg"]:
+                candidate = base_name + ext
+                if candidate in img_files_set:
+                    img_file = candidate
+                    break
+
+            if not img_file:
+                continue
+
+            img_path = os.path.join(split_imgs_dir, img_file)
+            img = cv2.imread(img_path)
+
+            if img is None:
+                print(f"\n⚠️  Could not read image: {img_file}")
+                error_reading_files.append(f"{split_name}/{img_file}" if split_name else img_file)
+                continue
+
+            img_height, img_width = img.shape[:2]
+
+            # Parse annotations
+            with open(txt_path, 'r') as f:
+                lines = f.readlines()
+
+            for idx, line in enumerate(lines):
+                parts = line.strip().split()
+                if len(parts) < 5:
+                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
+                    if entry not in invalid_annotation_files:
+                        invalid_annotation_files.append(entry)
+                    continue
+
+                class_id = parts[0]
+                if class_id not in classes_to_target:
+                    continue
+
+                try:
+                    x_center = float(parts[1])
+                    y_center = float(parts[2])
+                    width = float(parts[3])
+                    height = float(parts[4])
+                except ValueError:
+                    print(f"⚠️  Invalid annotation in {txt_file}: {line.strip()}")
+                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
+                    if entry not in invalid_annotation_files:
+                        invalid_annotation_files.append(entry)
+                    continue
+
+                # Convert to pixel coordinates
+                x1, y1, x2, y2 = yolo_to_bbox(x_center, y_center, width, height, img_width, img_height)
+
+                # Ensure coordinates are within image bounds
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(img_width, x2)
+                y2 = min(img_height, y2)
+
+                # Crop the image
+                cropped = img[y1:y2, x1:x2]
+
+                if cropped.size == 0:
+                    print(f"\n⚠️  Empty crop from {img_file} for class {class_id}")
+                    empty_crop_files.append(f"{img_file} (class {class_id})")
+                    continue
+
+                # Save cropped image (prefix with split name to avoid collisions)
+                class_name = class_map[class_id]
+                output_dir = os.path.join(output_base, f"{class_name}")
+                base_name = os.path.splitext(img_file)[0]
+                output_filename = f"{fname_prefix}{base_name}_crop_{idx}.png"
+                output_path = os.path.join(output_dir, output_filename)
+
+                cv2.imwrite(output_path, cropped)
+                crop_counts[class_id] += 1
+
+    # =========================================================================
+    # COMBINED SUMMARY
+    # =========================================================================
+    total_txt_processed = sum(1 for s, si, sl in split_dirs
+                              for f in os.listdir(sl)
+                              if f.endswith(".txt") and f != "classes.txt" and not f.endswith("_image_list.txt"))
 
     print("\n------------------------------------------------------------")
     print("|                        SUMMARY                           |")
     print("------------------------------------------------------------")
-    print(f"Total files processed: {len(txt_files)}")
+    if has_splits:
+        print(f"Splits processed: {', '.join(s[0] for s in split_dirs)}")
+    print(f"Total image files: {total_img_count}")
+    print(f"Total annotation files processed: {total_txt_processed}")
     print(f"Output directory: {output_base}")
     print("\nSuccessful Crops extracted per class:")
     for class_id in sorted(crop_counts.keys()):
@@ -333,19 +398,21 @@ def main():
             # Dataset overview
             f.write("DATASET OVERVIEW:\n")
             f.write("-"*70 + "\n")
-            f.write(f"Total image files found: {len(img_files)}\n")
-            f.write(f"Total annotation files found: {len([t for t in txt_files if t != 'classes.txt' and not t.endswith('_image_list.txt')])}\n")
+            if has_splits:
+                f.write(f"Splits: {', '.join(s[0] for s in split_dirs)}\n")
+            f.write(f"Total image files found: {total_img_count}\n")
+            f.write(f"Total annotation files found: {total_txt_count}\n")
 
             # Missing annotations (background images)
             f.write("\nPNG FILES WITH NO TXT ANNOTATIONS (Background Images) =>\n")
             f.write("-"*70 + "\n")
-            f.write(f"Count: {len(missing_txts)}\n")
-            if missing_txts:
+            f.write(f"Count: {len(all_missing_txts)}\n")
+            if all_missing_txts:
                 f.write("Files:\n")
-                for txt in missing_txts[:10]:  # Show first 10
+                for txt in all_missing_txts[:10]:
                     f.write(f"  - {txt}\n")
-                if len(missing_txts) > 10:
-                    f.write(f"  ... and {len(missing_txts) - 10} more\n")
+                if len(all_missing_txts) > 10:
+                    f.write(f"  ... and {len(all_missing_txts) - 10} more\n")
             f.write("\n")
 
             # Empty annotation files
