@@ -344,6 +344,29 @@ def main():
         else:
             print(f"   📌 Keeping: {temp_file}")
 
+    # Ask user whether to delete cropped images folder
+    if os.path.isdir(cropped_bbox_dir):
+        cropped_size_gb = sum(
+            os.path.getsize(os.path.join(dp, f))
+            for dp, _, files in os.walk(cropped_bbox_dir)
+            for f in files
+        ) / 1e9
+        print("\n" + "="*60)
+        print(f"📁 Cropped images folder: {cropped_bbox_dir}/")
+        print(f"   Size on disk: {cropped_size_gb:.2f} GB")
+        print("⚠️  WARNING: Deleting this folder is PERMANENT — embeddings (.npy) are kept,")
+        print("   but you will NOT be able to view the original cropped images again.")
+        response = input("\n🗑️  Delete cropped images folder to free disk space? (y/n): ")
+        if response.lower() == 'y':
+            import shutil
+            try:
+                shutil.rmtree(cropped_bbox_dir)
+                print(f"   ✅ Deleted: {cropped_bbox_dir}/")
+            except Exception as e:
+                print(f"   ❌ Error deleting folder: {e}")
+        else:
+            print(f"   📌 Keeping: {cropped_bbox_dir}/")
+
     # Final cleanup
     clear_memory()
 
