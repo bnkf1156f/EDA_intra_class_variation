@@ -28,3 +28,5 @@
 - **Linux support** — Added `exec.sh` launcher for Linux systems
 - **sentencepiece / protobuf** — Added to `requirements.txt`
 - **Delete cropped folder prompt** — Added user prompt to delete cropped images folder after pipeline run
+- **DINOv2 pre-annotation script** — Replaced SigLIP pre-annotation script with new `master_script_Dinov2_PaCMAP_PreAnn.py`; uses DINOv2 [CLS||avg_patches] (1536d) + PCA whitening + PaCMAP + HDBSCAN; SigLIP script removed
+- **PDF report enhancements (DINOv2 PreAnn)** — Added config rows to PDF summary table (embedding model, scene/pose weights); added Noise/Outlier Frames row after Activities Detected; PDF default name now includes frames folder name (`PreAnnotation_Quality_Report_{FolderName}.pdf`); replaced verbose outlier filename list with count + save-to-folder prompt at end of run (copies all outliers to `outliers_{FolderName}/`, warns on overwrite)

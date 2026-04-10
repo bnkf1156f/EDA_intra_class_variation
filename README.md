@@ -9,7 +9,7 @@
 Analyze frame quality **BEFORE sending to annotators** to ensure annotation effort is worthwhile.
 
 1. **Scan Frames**: Load raw frame images (no annotations needed)
-2. **SigLIP Embeddings**: Generate semantic representations (better for multi-object scenes)
+2. **DINOv2 Embeddings**: Generate semantic representations using DINOv2 [CLS||avg_patches] (1536d)
 3. **Activity Clustering**: Discover different scenarios/activities in frames
 4. **Quality Metrics**: Analyze brightness, contrast, motion blur
 5. **PDF Report**: Generate comprehensive quality assessment with visual montages
@@ -43,16 +43,16 @@ Three master scripts live in `master_scripts/`: one for **pre-annotation** frame
 > ```bash
 > # ✅ Correct — from project root:
 > ./exec.bat
-> python "master_scripts/1. master_script_SigLip_PreAnn.py"
+> python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"
 >
 > # ❌ Wrong — from master_scripts/ subfolder:
 > cd master_scripts
-> python "1. master_script_SigLip_PreAnn.py"   # paths will break!
+> python "1. master_script_Dinov2_PaCMAP_PreAnn.py"   # paths will break!
 > ```
 
 ---
 
-### Script: master_scripts/1. master_script_SigLip_PreAnn.py
+### Script: master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py
 **PRE-ANNOTATION Frame Quality Assessment** - Validate frames BEFORE sending to annotators
 
 #### Purpose
@@ -68,7 +68,7 @@ Helps engineers assess whether extracted frames are worthy of annotation effort 
 - 🎯 **Activity Clustering**: Automatically groups frames by semantic similarity (different scenarios)
 - 📊 **Quality Metrics**: Brightness, contrast, motion blur analysis
 - 🖼️ **Visual Montages**: See sample images per activity cluster in PDF
-- 🧠 **Adaptive Embeddings**: Uses SigLIP (90% scene weight) + pose features (10% weight) when persons detected
+- 🧠 **Adaptive Embeddings**: DINOv2 [CLS||avg_patches] 1536d (70% scene weight) + pose features 20d (30% weight) when persons detected
 - 📄 **PDF Report**: n-page comprehensive quality assessment
 - ⚠️ **Drop Recommendations**: Which frames to remove before annotation
 
@@ -78,7 +78,7 @@ Helps engineers assess whether extracted frames are worthy of annotation effort 
 ./exec.bat   # Select option 1
 
 # Or run directly (from project root):
-python "master_scripts/1. master_script_SigLip_PreAnn.py"
+python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"
 ```
 
 #### Interactive Prompts
@@ -87,16 +87,14 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 1. **Path to frames folder** (with autocomplete + validation)
 2. **"Change default parameters?"** — if No, skips to clustering params with sensible defaults
 3. **Clustering parameters** (always asked — these affect results the most):
-   - `n_components`: UMAP output dimensions (default: 16) — higher = finer clusters
+   - `n_components`: PCA output dimensions for clustering (default: 128) — higher = finer detail
    - `min_cluster_size`: Smallest group of frames that counts as an activity (default: 10)
    - `min_samples`: How strict a frame must match its neighbors to join a cluster (default: 3) — lower = more frames included, higher = only dense core frames
-   - `n_neighbors`: How many nearby frames UMAP looks at (default: 15) — higher = broader view
-   - `min_dist_umap`: UMAP minimum distance (default: **0.0** recommended)
 4. **Use embedding cache?** — Yes/No confirm
 
 **If "Change default parameters?" = Yes**, also prompts for:
 - YOLO batch size, confidence threshold
-- SigLIP batch size, anisotropy threshold
+- DINOv2 batch size, anisotropy threshold
 - PDF layout (samples per activity, grid columns, image quality)
 - Output directory and PDF filename
 
@@ -111,11 +109,13 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 - `True`: **Recommended** - Saves embeddings to disk for faster re-runs
 - `False`: Recompute embeddings every time (slower)
 
-**UMAP + HDBSCAN Clustering Parameters**:
-- `min_dist_umap`: **CRITICAL** - UMAP minimum distance (default: **0.0** recommended)
-  - `0.0`: Tightest packing, **12-15% outliers** (optimal quality, discovered 2026-02-16)
-  - `0.1`: Looser packing, 23-25% outliers (worse clustering quality)
-  - Lower values = denser clusters = better HDBSCAN performance = fewer outliers
+**PCA + PaCMAP + HDBSCAN Clustering Parameters**:
+- `n_components`: PCA output dimensions before HDBSCAN (default: **128**)
+  - `128`: Balanced — good for most datasets
+  - `256`: Finer detail — use when activities are very similar
+  - Higher = more discriminative but slower clustering
+- `min_cluster_size`: Minimum frames to form an activity group (default: **10**)
+- `min_samples`: Core point strictness for HDBSCAN (default: **3**) — lower = more frames included
 
 #### PDF Report Structure (5 Pages)
 
@@ -133,7 +133,7 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 - **Specific recommendations**: "Drop 45 blurry frames"
 
 **Page 3: Diversity Analysis**
-- UMAP scatter plot (frames colored by activity cluster)
+- PaCMAP scatter plot (frames colored by activity cluster)
 - Activity breakdown table with frame counts
 - Assessment of scenario diversity
 
@@ -180,7 +180,7 @@ A semantically distinct group of frames representing:
 1. Check Page 4 montages
 2. **Good clustering**: All N images in Activity 0 montage show similar scenario
 3. **Poor clustering**: Montage shows mixed unrelated scenarios
-4. **Fix**: Adjust `distance_threshold` (lower for stricter grouping)
+4. **Fix**: Increase `min_cluster_size` or `min_samples` for stricter grouping
 
 **Visual Example**:
 ```
@@ -223,7 +223,8 @@ Coverage gaps: Activity 3 has no bright lighting frames
 #### Output Structure
 ```
 preann_results/
-└── PreAnnotation_Quality_Report.pdf
+├── PreAnnotation_Quality_Report_{FolderName}.pdf
+└── outliers_{FolderName}/   (optional — user prompted at end of run)
 ```
 
 ---
@@ -914,7 +915,7 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
 
 | Script | Input | Output | Purpose | `./exec.bat` |
 |--------|-------|--------|---------|:---:|
-| **master_scripts/1. master_script_SigLip_PreAnn.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** (uses SigLIP) | Option 1 |
+| **master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py** | Raw frames | PDF quality report | **Pre-annotation frame assessment** (uses DINOv2 + PaCMAP) | Option 1 |
 | **master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py** | Interactive prompts | Complete analysis | **Automated pre-training pipeline** (uses DINOv2) | Option 2 |
 | **master_scripts/1. master_script_dinov2_PostTrain.py** | Interactive prompts | Complete analysis | **Automated post-training pipeline** (uses DINOv2) | Direct only |
 | postannotation_scripts/1. ann_txt_files_crop_bbox.py | Annotated images + TXT | Cropped images | Pre-training data inspection | — |

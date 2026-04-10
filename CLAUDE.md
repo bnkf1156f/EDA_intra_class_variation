@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an **intra-class variation analysis pipeline** for object detection datasets. It analyzes class heterogeneity using DINOv2 embeddings and clustering to discover sub-groups and outliers.
 
 **Three pipeline modes:**
-- **Pre-annotation**: Analyzes raw frames BEFORE annotation to assess quality/diversity (uses SigLIP embeddings)
+- **Pre-annotation**: Analyzes raw frames BEFORE annotation to assess quality/diversity (uses DINOv2 + PaCMAP)
 - **Pre-training**: Analyzes annotated dataset AFTER annotation, before model training (uses DINOv2 embeddings + YOLO annotation .txt files)
 - **Post-training**: Analyzes trained YOLOv8 model detections on video (uses DINOv2 embeddings, validates model quality)
 
@@ -20,7 +20,7 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `master_scripts/1. master_script_SigLip_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses SigLIP) | BEFORE annotation |
+| `master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses DINOv2 + PaCMAP) | BEFORE annotation |
 | `master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py` | Automated pre-training pipeline (uses DINOv2) | AFTER annotation |
 | `master_scripts/1. master_script_dinov2_PostTrain.py` | Automated post-training pipeline (uses DINOv2) | AFTER model training |
 | `postannotation_scripts/1. ann_txt_files_crop_bbox.py` | Pre-training: Extract crops from YOLO annotations | Part of pretrain pipeline |
@@ -28,7 +28,7 @@ This is an **intra-class variation analysis pipeline** for object detection data
 | `postannotation_scripts/2. save_dinov2_embeddings_per_class.py` | Generate DINOv2 embeddings | Part of both pipelines |
 | `postannotation_scripts/3. clustering_of_classes_embeddings.py` | DBSCAN clustering analysis | Part of both pipelines |
 | `postannotation_scripts/4. generate_pdf.py` | Generate PDF reports combining dataset stats + clustering results | Part of both pipelines |
-| `utils/preann_pdf_generate.py` | PDF/montage generation for pre-annotation pipeline | Imported by SigLip master script |
+| `utils/preann_pdf_generate.py` | PDF/montage generation for pre-annotation pipeline | Imported by DINOv2 PreAnn master script |
 | `master_scripts/1. interactive_cluster_viewer.py` | Optional: Interactive Plotly HTML viewer | Optional addon |
 
 ## Running the Pipeline
@@ -41,7 +41,7 @@ This is an **intra-class variation analysis pipeline** for object detection data
 ./exec.bat
 
 # Or run directly from project root:
-python "master_scripts/1. master_script_SigLip_PreAnn.py"           # Pre-annotation
+python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"    # Pre-annotation
 python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
 python "master_scripts/1. master_script_dinov2_PostTrain.py"         # Post-training (not in exec.bat)
 ```
@@ -52,7 +52,7 @@ All master scripts use **interactive questionary prompts** — paths use autocom
 
 **Pre-annotation workflow** (raw frames → quality PDF):
 ```bash
-python "master_scripts/1. master_script_SigLip_PreAnn.py"
+python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"
 ```
 
 **Pre-training workflow** (annotated images → clustering):
@@ -84,21 +84,22 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" --model mod
 Input: Raw frames (.png, .jpg, .jpeg)
     |
     v
-[master_scripts/1. master_script_SigLip_PreAnn.py]
+[master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py]
     - Person detection (YOLOv11-pose)
-    - SigLIP embeddings (adaptive: 90% scene weight + 10% pose weight when persons detected)
-    - Activity clustering (UMAP + HDBSCAN)
+    - DINOv2 [CLS||avg_patches] embeddings (1536d, adaptive: scene weight + pose weight when persons detected)
+    - PCA whitening → PaCMAP dimensionality reduction + HDBSCAN clustering
     - Quality metrics (brightness, sharpness, contrast, anisotropy)
     - Lighting categorization
     - Visual montages per activity
     |
     v
-Output: preann_results/PreAnnotation_Quality_Report.pdf (5 pages)
-    - Executive summary with quality score
+Output: preann_results/PreAnnotation_Quality_Report_{FolderName}.pdf (5 pages)
+    - Executive summary with quality score (includes embedding model + scene/pose weights + outlier count)
     - Quality metrics dashboard
-    - Activity diversity analysis with UMAP
+    - Activity diversity analysis with PaCMAP
     - Visual montages (N samples per activity)
     - Coverage gap heatmap
+    - Optional: preann_results/outliers_{FolderName}/ (user prompted at end of run)
 ```
 
 **Pre-training/Post-training workflow**:
@@ -129,7 +130,7 @@ Input (annotated images OR video+model)
 
 ### Key Data Structures
 - **Embeddings**:
-  - Pre-annotation: 768-dimensional vectors from `google/siglip-base-patch16-224`
+  - Pre-annotation: 1536-dimensional vectors from `facebook/dinov2-base` (CLS + avg_patches concatenated), with PCA whitening before PaCMAP
   - Pre/Post-training: 768-dimensional vectors from `facebook/dinov2-base`
 - **Image mapping**: `embeddings_dinov2_image_list.txt` maintains alignment between embeddings and source images
 - **YOLO format**: `class_id x_center y_center width height` (normalized coordinates)
@@ -156,27 +157,19 @@ Input (annotated images OR video+model)
 
 ## Key Parameters
 
-### Pre-Annotation Script (1. master_script_SigLip_PreAnn.py)
+### Pre-Annotation Script (1. master_script_Dinov2_PaCMAP_PreAnn.py)
 All parameters are configured via interactive prompts. Clustering params are always asked; niche params only shown if "Change default parameters?" = Yes.
 
 **Always prompted (clustering):**
-- `n_components`: UMAP output dimensions (default 16, affects cluster granularity)
 - `min_cluster_size`: Smallest group of frames that counts as an activity (default 10)
 - `min_samples`: How strict a frame must match neighbors to join a cluster (default 3, lower=more frames included)
-- `n_neighbors`: How many nearby frames UMAP looks at (default 15, higher=broader view)
-- `min_dist_umap`: UMAP minimum distance in embedding space (default 0.0 for tightest packing, reduces outliers)
 - `use_embedding_cache`: Cache embeddings to disk for faster re-runs (default True)
 
 **Behind "Change defaults?" gate:**
-- `batch_size`: SigLIP inference batch size (default 64)
+- `batch_size`: DINOv2 inference batch size (default 64)
 - `anisotropy_threshold`: Motion blur detection threshold (2.5 strict, 3.6 balanced, 5.0 lenient)
 - `cache_blurry_num_samples`: Blurry sample images in PDF (default 24)
 - `grid_cols_activities`/`grid_cols_blurry`: Grid columns for montages (default 4)
-
-**Optimal settings (discovered 2026-02-16):**
-- Use `min_dist_umap = 0.0` for best outlier reduction (12-15% outliers vs 23-25% with 0.1)
-- Tighter UMAP packing improves clustering quality (higher Silhouette, lower Davies-Bouldin)
-- Don't increase `n_neighbors` or decrease `min_samples` - makes clustering worse
 
 ### Clustering (Script 3)
 - `--eps`: DBSCAN epsilon (0.1 strict, 0.15 balanced, 0.2-0.3 lenient)
@@ -198,11 +191,11 @@ All parameters are configured via interactive prompts. Clustering params are alw
 ## Known Quirks
 
 ### Pre-Annotation Script
-1. **Embedding Model**: Uses SigLIP (`google/siglip-base-patch16-224`) instead of DINOv2 for better multi-object understanding in cluttered frames
-2. **Activity Clustering**: Uses UMAP (n_components dims) + HDBSCAN (density-based clustering), NOT hierarchical clustering or PCA
+1. **Embedding Model**: Uses DINOv2 (`facebook/dinov2-base`) with CLS token + avg_patches concatenated = 1536d
+2. **Activity Clustering**: PCA whitening → PaCMAP (dimensionality reduction) → HDBSCAN (density-based clustering)
 3. **Adaptive Embeddings**:
-   - Frames WITH persons: 90% scene weight (768d) + 10% lightweight pose features (24d) = 792 total dims
-   - Frames WITHOUT persons: 100% scene embeddings (768d) + zero-padded pose features (24d) = 792 total dims
+   - Frames WITH persons: scene (1536d) + pose features, weighted and concatenated
+   - Frames WITHOUT persons: scene embeddings (1536d) + zero-padded pose features
    - Weights applied to CONCATENATED dimensions (not blended scalars)
 4. **Visual Montages**: Creates configurable grid (default 4 columns) with variable sample counts per activity
 5. **Lighting Thresholds**: Fixed thresholds (Dark <80, Medium 80-175, Bright >175) based on grayscale mean
@@ -223,9 +216,10 @@ All parameters are configured via interactive prompts. Clustering params are alw
 ## File Naming Patterns
 
 ### Pre-Annotation Script
-- Output: `preann_results/PreAnnotation_Quality_Report.pdf`
+- Output: `preann_results/PreAnnotation_Quality_Report_{FolderName}.pdf`
+- Outliers: `preann_results/outliers_{FolderName}/` (user prompted at end of run; warns on overwrite)
 - Temp files: `temp_preannotation_charts/` (auto-cleaned after PDF generation)
-- Embedding files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (uses SigLIP embeddings, should be deleted before next run!)
+- Embedding cache files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (DINOv2 embeddings, should be deleted before next run if inputs changed!)
 
 ### Pre-Training/Post-Training Scripts (under `postann_pretrain_results/` or `posttrain_results/` respectively)
 - Script 1a outputs: `{basename}_crop_{idx}.png` + `temp_ann_file.txt`
@@ -240,9 +234,9 @@ All parameters are configured via interactive prompts. Clustering params are alw
 
 - PyTorch >= 2.1 with CUDA
 - ultralytics (YOLOv8/YOLOv11)
-- transformers (SigLIP for pre-annotation, DINOv2 for pre/post-training)
-- scikit-learn (DBSCAN)
-- umap-learn (pre-annotation clustering)
+- transformers (DINOv2 for all pipelines)
+- scikit-learn (DBSCAN, PCA)
+- pacmap (pre-annotation PaCMAP dimensionality reduction)
 - hdbscan (pre-annotation clustering)
 - opencv-python, pillow, numpy, pandas, matplotlib, seaborn, psutil, tqdm
 - reportlab (for PDF generation in Script 4)
@@ -414,6 +408,31 @@ Or should I make this a configurable parameter at the top of main()?
 1. Update the "Output Structure" code block
 2. Update directory structure sections
 3. Update "Output Files" descriptions
+
+### Change Log Protocol
+
+The `change_log/` directory must stay current:
+- `change_log/changes.md` — completed changes (what was done)
+- `change_log/plans.md` — upcoming work (bucket list)
+
+**When user says "I'm ready to commit" (or similar):**
+1. Ask for a brief description of what was done if not already clear
+2. Update `changes.md`: add a new bullet at the top under "Completed Changes" summarizing the work
+3. Update `plans.md`: if the work completes a planned item, remove or strike it from the list
+4. Stop — the user handles the actual git commit
+
+**Ongoing maintenance:**
+- When user describes new plans or ideas → add to `plans.md`
+- When work on a plan item starts → note "in progress" on that item
+- Never let the log go stale: every "ready to commit" = a `changes.md` update
+
+**Fully done vs partially done — CRITICAL:**
+- **Fully done** → remove item from `plans.md` entirely, add a bullet to `changes.md`
+- **Partially done** → keep in `plans.md` with updated status notes (e.g. `✅ X done, remaining: Y`)
+- **NEVER** leave a `✅ DONE` item sitting in `plans.md` — it belongs in `changes.md`
+- After removing items, renumber the remaining `plans.md` entries
+
+---
 
 ### Common User Requests
 

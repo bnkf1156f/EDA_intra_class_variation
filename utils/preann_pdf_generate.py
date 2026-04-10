@@ -296,12 +296,21 @@ def _add_executive_summary(story, analysis_data, title_style, heading_style, nor
 
     stats = analysis_data['summary_stats']
 
+    cfg = analysis_data.get('config', {})
+    n_noise = stats.get('n_noise', 0)
+
     summary_data = [
         ['Metric', 'Value', 'Status'],
+        ['Embedding Model', cfg.get('model_name', 'N/A'), ''],
+        ['Scene Weight / Pose Weight',
+         f"{cfg.get('scene_weight', 'N/A')} / {cfg.get('pose_weight', 'N/A')}", ''],
+        ['', '', ''],
         ['Total Frames Analyzed', str(stats['total_frames']), ''],
         ['Valid Frames (loaded successfully)', str(stats['valid_frames']), ''],
         ['Activities Detected', str(stats['n_activities']),
          '✅ Good' if stats['n_activities'] >= 3 else '⚠ Limited diversity'],
+        ['Noise / Outlier Frames', str(n_noise),
+         '⚠ High' if (stats['total_frames'] > 0 and n_noise / stats['total_frames'] > 0.30) else '✅ OK'],
         ['', '', ''],
         ['Frames with Persons Detected',
          f"{stats['frames_with_persons']} ({stats['frames_with_persons']/stats['total_frames']*100:.1f}%)" if stats['total_frames'] > 0 else 'N/A (no frames)',
@@ -759,28 +768,13 @@ def _add_activity_examples(story, analysis_data, temp_dir, heading_style, subhea
                     del montage_img
                     gc.collect()
 
-        # Add filename listing for all noise/outlier frames
-        noise_filelist_path = temp_dir / "noise_filenames.txt"
-        if noise_filelist_path.exists():
-            story.append(Paragraph(
-                f"<b>Complete list of all {n_noise} noise/outlier frames:</b>",
-                ParagraphStyle('NoiseListHeading', parent=normal_style, fontSize=10, fontName='Helvetica-Bold')
-            ))
-            story.append(Spacer(1, 0.05*inch))
-
-            try:
-                with open(noise_filelist_path, 'r') as f:
-                    filenames = f.read().strip().split('\n')
-
-                # Display filenames in a compact format (comma-separated, wrapped)
-                filenames_text = ', '.join(filenames)
-                story.append(Paragraph(
-                    filenames_text,
-                    ParagraphStyle('NoiseList', parent=normal_style, fontSize=8, textColor=colors.HexColor('#555555'))
-                ))
-                story.append(Spacer(1, 0.1*inch))
-            except Exception as e:
-                story.append(Paragraph(f"⚠ Error loading noise filename list: {e}", normal_style))
+        story.append(Paragraph(
+            f"<b>Total outlier frames:</b> {n_noise} — full list not shown in PDF to avoid overflow. "
+            f"Re-run the script and choose to save outliers to a folder when prompted at the end.",
+            ParagraphStyle('NoiseCount', parent=normal_style, fontSize=10,
+                           textColor=colors.HexColor('#555555'))
+        ))
+        story.append(Spacer(1, 0.1*inch))
 
     story.append(PageBreak())
 

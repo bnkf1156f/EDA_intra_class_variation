@@ -1,45 +1,51 @@
 #!/usr/bin/env python3
 """
 Pre-annotation frame quality assessment pipeline.
-Analyzes raw frames BEFORE annotation:
-    DINOv2 struggles with cluttered frames containing multiple objects and noise because it excels at single-object semantics, 
-    but was found to dilute in global context in complex scenes. 
-    Therefore, we use "SigLIP" here: Fits 8GB, multi-object semantic understanding, Captures fine details, encode spatial relationships well
+Analyzes raw frames BEFORE annotation using DINOv2 embeddings with [CLS || avg_patches]
+concatenation pooling, PCA whitening, PaCMAP visualization, and HDBSCAN clustering.
 
-Provides Quality metrics to identify issues and assess dataset diversity.
+Why DINOv2 over SigLIP:
+    SigLIP's global pooler_output compresses the entire cluttered factory scene into one
+    768d vector, letting shirt color / background dominate cluster assignments.
+    DINOv2's [CLS || avg_patches] produces 1536d: CLS captures global identity while
+    the 256 patch tokens (each 14x14px region) preserve localized spatial structure.
+    Benchmark on project frames: DINOv2 separation=+0.543 vs SigLIP separation=+0.290.
 
-Embedding Strategy (SigLIP-base-224):
-- Frames WITH persons: Scene embedding (768d) weighted 0.9 + lightweight pose features (24d) weighted 0.1
-- Frames WITHOUT persons: Scene embeddings (768d) + zero-padded pose features (24d)
+Embedding Strategy (DINOv2-base, 224px):
+- Output: [CLS token (768d) concatenated with mean of patch tokens (768d)] = 1536d
+- Frames WITH persons: scene embedding (1536d) weighted 0.7 + lightweight pose features (20d) weighted 0.3
+- Frames WITHOUT persons: scene embeddings (1536d) + zero-padded pose features (20d)
 - Weights are applied to CONCATENATED dimensions (not blended scalars)
-- Total dimensionality: 792d (768 scene + 24 pose)
+- Total dimensionality: 1556d (1536 scene + 20 pose)
+- Pose features: limb angles + relative distances only (NO absolute position/scale to avoid encoding worker identity)
+
+Pipeline changes vs SigLIP script:
+1. DINOv2 [CLS || avg_patches] pooling (1536d) instead of SigLIP pooler_output (768d)
+2. PCA whitening to 128d before HDBSCAN (decorrelates dominant axes like shirt color)
+3. PaCMAP for 2D visualization (better global+local structure than UMAP)
+4. HDBSCAN cluster_selection_method='eom' (merges sub-clusters into meaningful groups, reduces fragmentation)
 
 Tuning Guide:
-    EMBEDDING WEIGHTS (lines 347-348 in compute_multiview_embeddings):
-    - More scene-driven clustering (different scenes/objects/environments) => Increase scene_emb weight (0.9 → 0.95+)
-    - More pose-driven clustering (different worker activities/postures) => Increase pose_features weight (0.1 → 0.15+)
-    - Current: 90% scene weight + 10% pose weight (balanced for both environment and activity diversity)
+    EMBEDDING WEIGHTS (in compute_multiview_embeddings):
+    - More scene-driven clustering => Increase scene_emb weight (0.9 → 0.95+)
+    - More pose-driven clustering => Increase pose_features weight (0.1 → 0.15+)
 
     CLUSTERING GRANULARITY (in main):
-    - Want more fine-grained activity clusters => Increase n_components (8 → 16)
-    - Want broader activity grouping => Decrease n_components (8 → 4)
-    - Want to REDUCE OUTLIERS and TIGHTER PACKING of points (absorb edge points into clusters) => Decrease min_dist_umap (0.0)
-    - Min frames per activity => Adjust min_cluster_size (10 → higher for stricter clustering)
-    - Cluster strictness (edge frame inclusion) => Adjust min_samples (3 → lower for looser, higher for stricter)
-
+    - Want more fine-grained activity clusters => Increase n_components PCA dims (128 → 256)
+    - Min frames per activity => Adjust min_cluster_size (10 → higher for stricter)
+    - Cluster strictness => Adjust min_samples (3 → lower for looser, higher for stricter)
 
     QUALITY THRESHOLDS (in main):
-    - Blur detection sensitivity => anisotropy_threshold (3.6 → lower for stricter, higher for lenient) => >threshold are blur frames
+    - Blur detection sensitivity => anisotropy_threshold (3.6 → lower=stricter)
 
-    PDF REPORT OPTIONS (lines 1855-1861 in main):
-    - Samples shown per activity => activity_num_samples (20 → adjust based on dataset size)
-    - Blurry samples in report => cache_blurry_num_samples (24 → adjust for PDF length)
-    - Grid layout for montages => grid_cols_activities (3), grid_cols_blurry (3)
-    - PDF file size => pdf_image_quality (70 → lower for smaller files, higher for better quality)
+    PDF REPORT OPTIONS:
+    - Samples shown per activity => activity_num_samples
+    - Grid layout => grid_cols_activities, grid_cols_blurry
 """
 
 from pathlib import Path
 import sys
+import shutil
 
 # Ensure project root is on sys.path so `utils/` package is importable
 # when this script is run from master_scripts/ subdirectory
@@ -47,7 +53,7 @@ _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from transformers import AutoProcessor, SiglipVisionModel
+from transformers import AutoImageProcessor, AutoModel
 import torch
 import numpy as np
 import gc
@@ -58,7 +64,8 @@ from sklearn.cluster import HDBSCAN
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import matplotlib
-import umap
+import pacmap
+from sklearn.decomposition import PCA
 import random
 import questionary
 from utils.preann_pdf_generate import (
@@ -172,15 +179,21 @@ def detect_persons_and_extract_poses(image_paths, pose_model, device, conf_thres
 
 
 def extract_pose_features(keypoints_norm):
-    """Extract pose-invariant features: limb angles, distances, spatial layout."""
+    """Extract action-invariant pose features: limb angles and relative distances only.
+
+    Intentionally excludes absolute position (center_x/y) and body scale (x_range/y_range)
+    to avoid encoding worker identity, camera distance, or position in frame.
+    Only encodes WHAT the person is doing (joint angles + relative limb lengths).
+    Output: 20-dim vector (10 limb pairs × 2 features each).
+    """
     features = []
 
     limb_pairs = [
-        (5, 7), (7, 9),   # left arm (shoulder-elbow, elbow-wrist)
-        (6, 8), (8, 10),  # right arm
-        (11, 13), (13, 15),  # left leg (hip-knee, knee-ankle)
-        (12, 14), (14, 16),  # right leg
-        (5, 11), (6, 12),  # torso (shoulder-hip)
+        (5, 7), (7, 9),     # left arm (shoulder-elbow, elbow-wrist)
+        (6, 8), (8, 10),    # right arm
+        (11, 13), (13, 15), # left leg (hip-knee, knee-ankle)
+        (12, 14), (14, 16), # right leg
+        (5, 11), (6, 12),   # torso (shoulder-hip)
     ]
 
     for kp1_idx, kp2_idx in limb_pairs:
@@ -194,25 +207,10 @@ def extract_pose_features(keypoints_norm):
         else:
             features.extend([0.0, 0.0])
 
-    visible_kpts = keypoints_norm[keypoints_norm[:, 2] > 0.3]
-    if len(visible_kpts) > 0:
-        center_x = np.mean(visible_kpts[:, 0])
-        center_y = np.mean(visible_kpts[:, 1])
-        features.extend([center_x, center_y])
-    else:
-        features.extend([0.5, 0.5])
-
-    if len(visible_kpts) > 0:
-        x_range = np.max(visible_kpts[:, 0]) - np.min(visible_kpts[:, 0])
-        y_range = np.max(visible_kpts[:, 1]) - np.min(visible_kpts[:, 1])
-        features.extend([x_range, y_range])
-    else:
-        features.extend([0.0, 0.0])
-
     return np.array(features, dtype=np.float32)
 
 
-def compute_multiview_embeddings(frame_data, processor, model, device, batch_size, cache_dir=None):
+def compute_multiview_embeddings(frame_data, processor, model, device, batch_size, cache_dir=None, scene_weight=0.9, pose_weight=0.1):
     """
     Compute embeddings with optional pose integration:
     - If person detected: scene + lightweight pose features (weighted)
@@ -225,7 +223,7 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
     # If too few persons detected, use scene-only for ALL frames (avoids UMAP clustering issues)
     min_persons_for_pose = 3
     use_scene_only = frames_with_persons < min_persons_for_pose
-    expected_dim = 768 if use_scene_only else 768 + 24  # Scene-only: 768, Scene+pose: 792
+    expected_dim = 1536 if use_scene_only else 1536 + 20  # Scene-only: 1536, Scene+pose: 1556
 
     # Check cache with dimension validation
     if cache_dir is not None:
@@ -257,11 +255,11 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
         pose_features_dim = 0  # No pose features in scene-only mode
     else:
         print(f"\nProcessing {len(frame_data)} frames:")
-        print(f"  - {frames_with_persons} frames with persons (scene + lightweight pose features)")
-        print(f"  - {frames_without_persons} frames without persons (scene only)")
+        print(f"  - {frames_with_persons} frames with persons (DINOv2 [CLS||avg_patches] 1536d + pose 20d)")
+        print(f"  - {frames_without_persons} frames without persons (DINOv2 [CLS||avg_patches] 1536d only)")
         # Determine pose_features dimension ONCE upfront to avoid mismatch across batches
-        # 10 limb pairs × 2 features + 2 center coords + 2 range values = 24
-        pose_features_dim = 24
+        # 10 limb pairs × 2 features (angle + distance) = 20
+        pose_features_dim = 20
 
     # Pre-allocate zero arrays for frames without persons (reuse across all frames)
     zero_pose_features = np.zeros(pose_features_dim, dtype=np.float32) if pose_features_dim > 0 else np.array([], dtype=np.float32)
@@ -309,21 +307,26 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
             scene_embs = None
             if len(batch_scene_imgs) > 0:
                 inputs_scene = processor(images=batch_scene_imgs, return_tensors="pt")
-                # SigLIP vision model only needs pixel_values
-                inputs_scene = {'pixel_values': inputs_scene['pixel_values'].to(device)}
+                inputs_scene = {k: v.to(device) for k, v in inputs_scene.items()}
 
                 if device == "cuda":
                     with torch.amp.autocast('cuda'):
                         outputs_scene = model(**inputs_scene)
-                        scene_embs = outputs_scene.pooler_output.cpu().numpy()  # SigLIP uses pooler_output (768d)
+                        hs = outputs_scene.last_hidden_state  # [B, 1+num_patches, 768]
+                        cls_tok = hs[:, 0]                    # [B, 768]
+                        patch_mean = hs[:, 1:].mean(dim=1)    # [B, 768]
+                        scene_embs = torch.cat([cls_tok, patch_mean], dim=1).cpu().numpy()  # [B, 1536]
                 else:
                     outputs_scene = model(**inputs_scene)
-                    scene_embs = outputs_scene.pooler_output.cpu().numpy()  # SigLIP uses pooler_output (768d)
+                    hs = outputs_scene.last_hidden_state  # [B, 1+num_patches, 768]
+                    cls_tok = hs[:, 0]                    # [B, 768]
+                    patch_mean = hs[:, 1:].mean(dim=1)    # [B, 768]
+                    scene_embs = torch.cat([cls_tok, patch_mean], dim=1).cpu().numpy()  # [B, 1536]
 
                 del outputs_scene, inputs_scene
 
 
-            # Use ONLY lightweight geometric pose features (24-dim) instead of full DINOv2 skeleton embedding (768-dim)
+            # Use ONLY lightweight geometric pose features (20-dim) instead of full DINOv2 skeleton embedding (768-dim)
 
             # Aggregate pose features per frame (for frames with persons) - SKIP in scene-only mode
             frame_pose_features_aggregates = {}
@@ -341,22 +344,22 @@ def compute_multiview_embeddings(frame_data, processor, model, device, batch_siz
                 scene_emb = scene_embs[valid_idx]
 
                 if use_scene_only:
-                    # Scene-only mode: just use SigLIP scene embeddings (768-dim)
+                    # Scene-only mode: just use DINOv2 scene embeddings (1536-dim)
                     multiview_embeddings.append(scene_emb)
                 elif batch_has_persons[batch_idx] and valid_idx in frame_pose_features_aggregates:
                     # Frame with person: scene (90%) + lightweight pose features (10%)
                     pose_features_agg = frame_pose_features_aggregates[valid_idx]
 
                     # Pre-allocate output array to avoid temporary allocations
-                    combined_emb = np.empty(768 + pose_features_dim, dtype=np.float32)
-                    combined_emb[:768] = scene_emb * 0.9      # Scene dominant
-                    combined_emb[768:] = pose_features_agg * 0.1  # Lightweight pose supplement
+                    combined_emb = np.empty(1536 + pose_features_dim, dtype=np.float32)
+                    combined_emb[:1536] = scene_emb * scene_weight      # Scene dominant
+                    combined_emb[1536:] = pose_features_agg * pose_weight  # Lightweight pose supplement
                     multiview_embeddings.append(combined_emb)
                 else:
                     # Frame without person: scene only + zero-padded pose features
-                    combined_emb = np.empty(768 + pose_features_dim, dtype=np.float32)
-                    combined_emb[:768] = scene_emb
-                    combined_emb[768:] = zero_pose_features  # Reuse pre-allocated zeros
+                    combined_emb = np.empty(1536 + pose_features_dim, dtype=np.float32)
+                    combined_emb[:1536] = scene_emb
+                    combined_emb[1536:] = zero_pose_features  # Reuse pre-allocated zeros
                     multiview_embeddings.append(combined_emb)
 
             # Delete batch tensors and numpy arrays (keep image_cv for quality metrics step)
@@ -456,69 +459,62 @@ def categorize_lighting(brightness_values):
     return lighting_labels
 
 
-def cluster_activities_with_umap_hdbscan(embeddings, n_components, min_cluster_size, min_samples, n_neighbors, min_dist_umap):
+def cluster_activities_with_pca_hdbscan(embeddings, n_pca_components, min_cluster_size, min_samples, cluster_selection_epsilon=0.0):
     """
-    Cluster frames by activity using UMAP + HDBSCAN (optimized parameters).
+    Cluster frames by activity using PCA whitening + HDBSCAN.
     Pipeline:
     1. Check minimum samples
-    2. Standardize features
-    3. UMAP for dimensionality reduction (preserves local structure better than PCA)
-    4. HDBSCAN for density-based clustering (finds activity patterns + outliers)
+    2. Standardize features (zero mean, unit variance)
+    3. PCA whiten to n_pca_components dims (decorrelates axes, equalizes dimension importance)
+    4. L2-normalize (maps to unit hypersphere for Euclidean ≈ cosine distance)
+    5. HDBSCAN 'eom' clustering (merges sub-clusters into meaningful groups, reduces fragmentation)
+       cluster_selection_epsilon: post-hoc merge step — absorbs outliers near existing clusters
+       without loosening the core density requirement (0.0=off, 0.3=moderate merging)
     """
-    # 1. Check minimum sample requirement for UMAP
     min_samples_required = 3
     if embeddings.shape[0] < min_samples_required:
         print(f"  ⚠️  WARNING: Only {embeddings.shape[0]} samples")
-        print(f"      UMAP requires at least {min_samples_required} samples for clustering")
-        print(f"      Skipping activity clustering - all frames assigned to single group")
-        # Return all frames as single cluster (label 0), no dimensionality reduction
+        print(f"      Requires at least {min_samples_required} samples for clustering")
+        print(f"      Skipping clustering - all frames assigned to single group")
         return np.zeros(embeddings.shape[0], dtype=int), embeddings, {"insufficient_samples": True}
 
-    # 2. Standardize features (important for UMAP)
+    # 1. Standardize
     scaler = StandardScaler()
     embeddings_scaled = scaler.fit_transform(embeddings)
 
-    # 3. UMAP dimensionality reduction (better manifold preservation than PCA)
-    # For spectral initialization, need n_components < n_samples - 1 AND n_components < n_neighbors
-    max_components = min(embeddings.shape[0] - 2, embeddings.shape[1])  # -2 for safety margin
-    n_components = min(n_components, max_components)
-    n_neighbors_umap = min(n_neighbors, max(2, embeddings.shape[0] - 1))  # Ensure 2 <= n_neighbors < n_samples
+    # 2. PCA whitening (decorrelates + equalizes all dimensions)
+    actual_components = min(n_pca_components, embeddings_scaled.shape[0] - 1, embeddings_scaled.shape[1])
+    pca = PCA(n_components=actual_components, whiten=True, random_state=42)
+    pca_embeddings = pca.fit_transform(embeddings_scaled)
+    explained = pca.explained_variance_ratio_.sum() * 100
 
-    # Ensure n_components <= n_neighbors (UMAP requirement)
-    n_components = min(n_components, n_neighbors_umap)
+    print(f"  PCA: Reduced {embeddings.shape[1]} dims → {actual_components} dims")
+    print(f"       (whitened, explains {explained:.1f}% of variance)")
 
-    reducer = umap.UMAP(
-        n_components=n_components,
-        n_neighbors=n_neighbors_umap,  # Adaptive to dataset size
-        min_dist=min_dist_umap,        # Minimum distance between points in low-dim space
-        metric='euclidean',
-        random_state=42
-    )
+    # 3. L2 normalize (Euclidean distance on unit hypersphere ≈ cosine distance)
+    norms = np.linalg.norm(pca_embeddings, axis=1, keepdims=True)
+    norms = np.where(norms == 0, 1, norms)
+    pca_embeddings_norm = pca_embeddings / norms
 
-    umap_embeddings = reducer.fit_transform(embeddings_scaled)
-
-    print(f"  UMAP: Reduced {embeddings.shape[1]} dims → {n_components} dims")
-    print(f"        (n_neighbors={n_neighbors_umap}, min_dist={min_dist_umap})")
-
-    # 4. HDBSCAN clustering (optimized parameters for activity discovery)
+    # 4. HDBSCAN with 'eom' selection + optional epsilon merge to absorb nearby outliers
     clusterer = HDBSCAN(
-        min_cluster_size=min_cluster_size,  # Larger = more stable clusters
-        min_samples=min_samples,            # Higher = stricter clustering
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
         metric='euclidean',
-        cluster_selection_method='eom'      # standard HDBSCAN algorithm which looks for broader, more stable clusters
+        cluster_selection_method='eom',
+        cluster_selection_epsilon=cluster_selection_epsilon
     )
 
-    activity_labels = clusterer.fit_predict(umap_embeddings)
+    activity_labels = clusterer.fit_predict(pca_embeddings_norm)
 
     n_clusters = len(set(activity_labels)) - (1 if -1 in activity_labels else 0)
     n_noise = np.sum(activity_labels == -1)
 
     print(f"  HDBSCAN: Found {n_clusters} activity clusters, {n_noise} noise/outlier frames")
 
-    # 5. Compute cluster quality metrics (cheap, informative)
-    cluster_quality = compute_cluster_quality_metrics(umap_embeddings, activity_labels)
+    cluster_quality = compute_cluster_quality_metrics(pca_embeddings_norm, activity_labels)
 
-    return activity_labels, umap_embeddings, cluster_quality
+    return activity_labels, pca_embeddings_norm, cluster_quality
 
 
 def compute_cluster_quality_metrics(embeddings, labels):
@@ -672,10 +668,14 @@ def create_quality_chart(metrics, output_path, anisotropy_threshold):
     return output_path
 
 
-def create_umap_visualization(embeddings, activity_labels, output_path):
-    """Generate UMAP scatter plot colored by activity clusters (handles HDBSCAN noise)."""
-    n_neighbors_viz = min(15, embeddings.shape[0] - 1)  # Ensure n_neighbors < n_samples
-    reducer = umap.UMAP(n_components=2, random_state=42, n_neighbors=n_neighbors_viz, min_dist=0.1)
+def create_pacmap_visualization(embeddings, activity_labels, output_path):
+    """Generate PaCMAP scatter plot colored by activity clusters (handles HDBSCAN noise).
+
+    PaCMAP is used instead of UMAP because it better preserves both local and global structure,
+    making cluster positions in 2D more interpretable (spatially related clusters stay nearby).
+    """
+    n_neighbors_viz = min(10, max(2, embeddings.shape[0] // 10))
+    reducer = pacmap.PaCMAP(n_components=2, n_neighbors=n_neighbors_viz, random_state=42)
     X_2d = reducer.fit_transform(embeddings)
 
     unique_activities = np.unique(activity_labels)
@@ -683,25 +683,17 @@ def create_umap_visualization(embeddings, activity_labels, output_path):
     cluster_activities = [a for a in unique_activities if a != -1]
     n_clusters = len(cluster_activities)
 
-    # Adjust figure size and layout based on number of clusters
     if n_clusters <= 15:
-        # Few clusters - legend inside plot
         fig, ax = plt.subplots(figsize=(10, 8))
-        legend_outside = False
     else:
-        # Many clusters - wider figure with legend outside
         fig, ax = plt.subplots(figsize=(14, 8))
-        legend_outside = True
 
-    # Plot noise points first (gray, small, transparent)
     if noise_mask.any():
         ax.scatter(X_2d[noise_mask, 0], X_2d[noise_mask, 1],
                   c='lightgray', label='Noise/Outliers',
                   s=20, alpha=0.3, edgecolors='none')
 
-    # Plot clusters
     if n_clusters > 0:
-        # Use tab20 for <=20 clusters, generate more colors if needed
         if n_clusters <= 20:
             cmap = matplotlib.colormaps.get_cmap('tab20')
         else:
@@ -714,20 +706,17 @@ def create_umap_visualization(embeddings, activity_labels, output_path):
                       label=f'Activity {activity_id}',
                       s=40, alpha=0.7, edgecolors='black', linewidth=0.5)
 
-    ax.set_xlabel('UMAP Dimension 1', fontsize=12, fontweight='bold')
-    ax.set_ylabel('UMAP Dimension 2', fontsize=12, fontweight='bold')
-    ax.set_title('Frame Diversity - Activity Clustering (UMAP)', fontsize=14, fontweight='bold')
+    ax.set_xlabel('PaCMAP Dimension 1', fontsize=12, fontweight='bold')
+    ax.set_ylabel('PaCMAP Dimension 2', fontsize=12, fontweight='bold')
+    ax.set_title('Frame Diversity - Activity Clustering (PaCMAP)', fontsize=14, fontweight='bold')
     ax.grid(alpha=0.3)
 
-    # Handle legend based on cluster count
     if n_clusters <= 15:
         ax.legend(loc='best', fontsize=9, ncol=2)
     elif n_clusters <= 40:
-        # Legend outside to the right
         n_legend_cols = 2 if n_clusters <= 25 else 3
         ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=8, ncol=n_legend_cols)
     else:
-        # Too many clusters - skip legend, add note
         ax.text(0.98, 0.02, f'{n_clusters} clusters (legend omitted)',
                 transform=ax.transAxes, fontsize=10, ha='right', va='bottom',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
@@ -896,7 +885,7 @@ def _prompt_text(message, default=None):
 
 def main():
     print("="*60)
-    print("PRE-ANNOTATION FRAME QUALITY ASSESSMENT PIPELINE")
+    print("PRE-ANNOTATION PIPELINE — DINOv2 + PaCMAP + PCA")
     print("="*60)
 
     ## -----------------------------------------------##
@@ -922,46 +911,54 @@ def main():
         "Change default parameters?", default=False))
 
     if change_defaults:
-        yolo_batch_size      = int(_prompt_text("YOLO pose detection batch size", 8))
+        yolo_batch_size      = int(_prompt_text("YOLO pose detection batch size", 16))
         yolo_conf_person_thr = float(_prompt_text("YOLO pose detection confidence threshold", 0.3))
-        batch_size           = int(_prompt_text("SigLIP embedding batch size", 64))
+        batch_size           = int(_prompt_text("DINOv2 embedding batch size", 64))
         anisotropy_threshold = float(_prompt_text("Motion blur anisotropy threshold (lower=stricter)", 3.6))
     else:
-        yolo_batch_size      = 8
+        yolo_batch_size      = 16
         yolo_conf_person_thr = 0.3
         batch_size           = 64
         anisotropy_threshold = 3.6
 
     # Clustering — always ask (these affect results the most)
-    n_components      = int(_prompt_text("UMAP output dimensions (higher=finer clusters)", 16))
-    min_cluster_size  = int(_prompt_text("HDBSCAN min cluster size (smallest group of frames that counts as an activity)", 10))
+    n_components      = int(_prompt_text("PCA output dimensions for clustering (128=balanced, 256=finer detail)", 128))
+    min_cluster_size  = int(_prompt_text("HDBSCAN min cluster size (smallest group of frames that counts as an activity)", 25))
     min_samples       = int(_prompt_text("HDBSCAN min_samples (how strict a frame must match its neighbors to join a cluster; lower=more frames included, higher=only dense core frames)", 3))
-    n_neighbors       = int(_prompt_text("UMAP n_neighbors (how many nearby frames UMAP looks at; higher=broader view)", 15))
-    min_dist_umap     = float(_prompt_text("UMAP min_dist (0.0=tightest packing, reduces outliers)", 0.0))
+
+    # Derive default PDF name from frames folder name
+    _frames_folder_name = Path(frames_dir).name
+    _default_pdf_name   = f"PreAnnotation_Quality_Report_{_frames_folder_name}.pdf"
 
     if change_defaults:
-        cache_blurry_num_samples = int(_prompt_text("Blurry samples shown in PDF", 24))
-        activity_num_samples     = int(_prompt_text("Samples shown per activity in PDF", 20))
-        outliers_num_samples     = int(_prompt_text("Samples shown for outliers in PDF", 52))
-        pdf_image_quality        = int(_prompt_text("PDF image JPEG quality (1-100)", 70))
-        grid_cols_activities     = int(_prompt_text("Grid columns for activity montages in PDF", 4))
-        grid_cols_blurry         = int(_prompt_text("Grid columns for blurry montage in PDF", 4))
-        pdf_name                 = _prompt_text("Output PDF filename", "PreAnnotation_Quality_Report.pdf")
+        scene_weight                 = float(_prompt_text("Scene embedding weight (0.7=scene-dominant, lower=more pose influence)", 0.7))
+        pose_weight                  = float(_prompt_text("Pose features weight (0.3=more action influence, lower=less pose)", 0.3))
+        cluster_selection_epsilon    = float(_prompt_text("Cluster merge epsilon (0.0=off, 0.3=absorb nearby outliers, higher=more merging)", 0.3))
+        cache_blurry_num_samples     = int(_prompt_text("Blurry samples shown in PDF", 24))
+        activity_num_samples         = int(_prompt_text("Samples shown per activity in PDF", 20))
+        outliers_num_samples         = int(_prompt_text("Samples shown for outliers in PDF", 52))
+        pdf_image_quality            = int(_prompt_text("PDF image JPEG quality (1-100)", 70))
+        grid_cols_activities         = int(_prompt_text("Grid columns for activity montages in PDF", 4))
+        grid_cols_blurry             = int(_prompt_text("Grid columns for blurry montage in PDF", 4))
+        pdf_name                     = _prompt_text("Output PDF filename", _default_pdf_name)
     else:
-        cache_blurry_num_samples = 24
-        activity_num_samples     = 20
-        outliers_num_samples     = 52
-        pdf_image_quality        = 70
-        grid_cols_activities     = 4
-        grid_cols_blurry         = 4
-        pdf_name                 = "PreAnnotation_Quality_Report.pdf"
+        scene_weight                 = 0.7
+        pose_weight                  = 0.3
+        cluster_selection_epsilon    = 0.3
+        cache_blurry_num_samples     = 24
+        activity_num_samples         = 20
+        outliers_num_samples         = 52
+        pdf_image_quality            = 70
+        grid_cols_activities         = 4
+        grid_cols_blurry             = 4
+        pdf_name                     = _default_pdf_name
 
     output_dir = RESULTS_DIR
 
     use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
 
     # Model Name for Embedding
-    model_name = "google/siglip-base-patch16-224"   # Fast (1.4 min/10K frames) + 768d embeddings
+    model_name = "facebook/dinov2-base"  # [CLS||avg_patches] = 1536d, strong fine-grained separation
 
     print("\n" + "="*60)
 
@@ -990,10 +987,10 @@ def main():
     else:
         print("Using CPU - GPU not available")
 
-    # Load SigLIP vision model from Hugging Face
-    print(f"\nLoading SigLIP vision model from Hugging Face: {model_name} ...")
-    processor = AutoProcessor.from_pretrained(model_name)
-    model = SiglipVisionModel.from_pretrained(model_name).to(device)
+    # Load DINOv2 model from Hugging Face
+    print(f"\nLoading DINOv2 model from Hugging Face: {model_name} ...")
+    processor = AutoImageProcessor.from_pretrained(model_name)
+    model = AutoModel.from_pretrained(model_name).to(device)
 
     # STEP 1: SCAN FRAMES
     print("\n" + "="*60)
@@ -1031,10 +1028,10 @@ def main():
 
     # STEP 3: COMPUTE EMBEDDINGS (pose-aware when persons detected, scene-only otherwise)
     print("\n" + "="*60)
-    print("STEP 3: COMPUTE EMBEDDINGS")
+    print("STEP 3: COMPUTE DINOv2 EMBEDDINGS ([CLS||avg_patches], 1536d)")
     print("="*60)
     cache_dir = output_dir if use_embedding_cache else None
-    embeddings, valid_frame_indices = compute_multiview_embeddings(frame_data, processor, model, device, batch_size, cache_dir=cache_dir)
+    embeddings, valid_frame_indices = compute_multiview_embeddings(frame_data, processor, model, device, batch_size, cache_dir=cache_dir, scene_weight=scene_weight, pose_weight=pose_weight)
 
     if len(embeddings) == 0:
         print("No valid multiview embeddings. Exiting.")
@@ -1064,9 +1061,9 @@ def main():
 
     # STEP 5: UMAP + HDBSCAN CLUSTERING
     print("\n" + "="*60)
-    print("STEP 5: UMAP + HDBSCAN CLUSTERING")
+    print("STEP 5: PCA WHITENING + HDBSCAN CLUSTERING")
     print("="*60)
-    activity_labels, umap_embeddings, cluster_quality = cluster_activities_with_umap_hdbscan(embeddings, n_components=n_components, min_cluster_size=min_cluster_size, min_samples=min_samples, n_neighbors=n_neighbors, min_dist_umap=min_dist_umap)
+    activity_labels, pca_embeddings, cluster_quality = cluster_activities_with_pca_hdbscan(embeddings, n_pca_components=n_components, min_cluster_size=min_cluster_size, min_samples=min_samples, cluster_selection_epsilon=cluster_selection_epsilon)
 
     # Count activities (excluding noise)
     unique_activities = np.unique(activity_labels)
@@ -1190,7 +1187,7 @@ def main():
     plt.close('all') 
     gc.collect()
 
-    create_umap_visualization(umap_embeddings, activity_labels, umap_chart_path)  # Use UMAP embeddings for visualization
+    create_pacmap_visualization(pca_embeddings, activity_labels, umap_chart_path)
     plt.close('all')
     gc.collect()
 
@@ -1212,25 +1209,18 @@ def main():
         print(f"  ✅ Activity {activity_id} montage created")
 
     # Generate noise/outlier montage if present
+    noise_paths = []  # Keep for post-PDF outlier folder prompt
     if -1 in unique_activities and n_noise > 0:
         noise_mask = activity_labels == -1
         noise_paths = [valid_paths[i] for i, mask_val in enumerate(noise_mask) if mask_val]
 
-        # Show 20 samples in montage (larger thumbnails for better visibility)
+        # Show samples in montage (larger thumbnails for better visibility)
         montage = create_activity_montage(noise_paths, -1, max_samples=outliers_num_samples, grid_cols=grid_cols_activities, target_height=250)
         montage_path = temp_dir / f"activity_-1_montage.png"
         montage.save(montage_path)
         del montage  # FREE MEMORY
         gc.collect()
         print(f"  ✅ Noise/Outliers montage created ({n_noise} frames)")
-
-        # Save list of all noise/outlier filenames for PDF
-        noise_filenames = [str(p.name) for p in noise_paths]
-        noise_filelist_path = temp_dir / "noise_filenames.txt"
-        with open(noise_filelist_path, 'w') as f:
-            for fname in noise_filenames:
-                f.write(fname + '\n')
-        print(f"  ✅ Noise/Outliers filename list saved ({len(noise_filenames)} files)")
 
     # Generate blurry images montage
     print("\nGenerating blurry images montage...")
@@ -1261,10 +1251,16 @@ def main():
         'cache_blurry_num_samples': cache_blurry_num_samples,
         'recommendations': recommendations,
         'cluster_quality': cluster_quality,
+        'config': {
+            'model_name': model_name,
+            'scene_weight': scene_weight,
+            'pose_weight': pose_weight,
+        },
         'summary_stats': {
             'total_frames': len(image_paths),
             'valid_frames': len(valid_paths),
             'n_activities': n_activities,
+            'n_noise': n_noise,
             'frames_with_persons': frames_with_persons,
             'max_persons_in_frame': max_persons_in_frame,
             'dark_count': dark_count,
@@ -1290,6 +1286,35 @@ def main():
     print("="*60)
     print(f"Output: {pdf_path}")
     print("="*60)
+
+    # STEP 12: OPTIONAL — Save all outlier frames to a folder
+    if noise_paths:
+        print("\n" + "="*60)
+        print("STEP 12: OUTLIER FRAMES (OPTIONAL SAVE)")
+        print("="*60)
+        print(f"  ℹ️  {n_noise} outlier frames detected.")
+        print(f"  ⚠️  Warning: copying {n_noise} images could be a memory/disk burden for large datasets.")
+        save_outliers = _ask(questionary.confirm(
+            f"Save all {n_noise} outlier frames to a folder?", default=False))
+
+        if save_outliers:
+            outliers_folder_name = f"outliers_{_frames_folder_name}"
+            outliers_folder = Path(output_dir) / outliers_folder_name
+            if outliers_folder.exists():
+                print(f"\n  ⚠️  WARNING: Folder '{outliers_folder}' already exists — it will be overwritten!")
+                confirm_overwrite = _ask(questionary.confirm("Overwrite existing outliers folder?", default=False))
+                if confirm_overwrite:
+                    shutil.rmtree(outliers_folder)
+                else:
+                    print("  Skipping outlier folder save.")
+                    save_outliers = False
+
+        if save_outliers:
+            outliers_folder.mkdir(parents=True, exist_ok=True)
+            print(f"\n  Copying {n_noise} outlier frames to: {outliers_folder}")
+            for src_path in tqdm(noise_paths, desc="Copying outliers", unit="file"):
+                shutil.copy2(src_path, outliers_folder / src_path.name)
+            print(f"  ✅ Outlier frames saved to: {outliers_folder}")
 
     # Clean up cache files (optional - user can keep them for faster re-runs)
     if use_embedding_cache:
