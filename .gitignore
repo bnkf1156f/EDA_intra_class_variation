@@ -48,6 +48,8 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.remember/
+.claude/
 
 # Jupyter Notebook
 .ipynb_checkpoints

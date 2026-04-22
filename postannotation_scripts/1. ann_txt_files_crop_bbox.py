@@ -124,10 +124,13 @@ def main():
     output_base = args.output_dir
     os.makedirs(output_base, exist_ok=True)
 
+    # Precompute output dir per class_id (fix #3: avoid repeated os.path.join in inner loop)
+    class_output_dirs = {}
     for class_id in classes_to_target:
         class_name = class_map[class_id]
-        class_dir = os.path.join(output_base, f"{class_name}")
+        class_dir = os.path.join(output_base, class_name)
         os.makedirs(class_dir, exist_ok=True)
+        class_output_dirs[class_id] = class_dir
 
     # Accumulators across all splits
     total_img_count = 0
@@ -192,41 +195,111 @@ def main():
         all_missing_txts.extend(f"{split_name}/{t}" if split_name else t for t in missing_txts)
 
         # =================================================================
-        # DATASET VALIDATION
+        # VALIDATE ANNOTATIONS + PROCESS CROPS (single pass, fix #1)
+        # Each .txt is read once. cv2.imread is skipped if no target-class
+        # annotations are present in the file.
         # =================================================================
         print("\n------------------------------------------------------------")
-        print(f"|                 VALIDATING ANNOTATIONS{split_label:>20} |")
+        print(f"|          VALIDATING & PROCESSING ANNOTATIONS{split_label:>14} |")
         print("------------------------------------------------------------")
 
-        for txt_file in txt_files:
+        # Filename prefix to avoid collisions across splits
+        fname_prefix = f"{split_name}_" if split_name else ""
+
+        for txt_file in tqdm(txt_files, desc=f"Processing annotations{split_label}", unit="file"):
             if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
                 continue
+
             txt_path = os.path.join(split_label_dir, txt_file)
+            entry = f"{split_name}/{txt_file}" if split_name else txt_file
+
             with open(txt_path, 'r') as f:
                 lines = f.readlines()
 
             if len(lines) == 0:
-                empty_annotation_files.append(f"{split_name}/{txt_file}" if split_name else txt_file)
+                empty_annotation_files.append(entry)
                 continue
 
-            for line in lines:
+            # --- Validate all lines and collect target-class crops to perform ---
+            pending_crops = []  # (idx, class_id, x_center, y_center, w, h)
+            for idx, line in enumerate(lines):
                 parts = line.strip().split()
                 if len(parts) < 5:
                     print(f"⚠️  Invalid Annotation File: {txt_file}")
-                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
                     if entry not in invalid_annotation_files:
                         invalid_annotation_files.append(entry)
                     continue
-                class_id = parts[0]
 
+                class_id = parts[0]
                 class_annotation_counts[class_id] = class_annotation_counts.get(class_id, 0) + 1
 
                 if class_id not in class_map:
                     if class_id not in unexpected_classes:
                         unexpected_classes[class_id] = []
-                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
                     if entry not in unexpected_classes[class_id]:
                         unexpected_classes[class_id].append(entry)
+                    continue
+
+                if class_id not in classes_to_target:
+                    continue
+
+                try:
+                    x_center = float(parts[1])
+                    y_center = float(parts[2])
+                    width    = float(parts[3])
+                    height   = float(parts[4])
+                except ValueError:
+                    print(f"⚠️  Invalid annotation in {txt_file}: {line.strip()}")
+                    if entry not in invalid_annotation_files:
+                        invalid_annotation_files.append(entry)
+                    continue
+
+                pending_crops.append((idx, class_id, x_center, y_center, width, height))
+
+            # Skip imread entirely if this file has no target-class annotations
+            if not pending_crops:
+                continue
+
+            # Find corresponding image
+            base_name = os.path.splitext(txt_file)[0]
+            img_file = None
+            for ext in [".png", ".jpg", ".jpeg"]:
+                candidate = base_name + ext
+                if candidate in img_files_set:
+                    img_file = candidate
+                    break
+
+            if not img_file:
+                continue
+
+            img = cv2.imread(os.path.join(split_imgs_dir, img_file))
+            if img is None:
+                print(f"\n⚠️  Could not read image: {img_file}")
+                error_reading_files.append(f"{split_name}/{img_file}" if split_name else img_file)
+                continue
+
+            img_height, img_width = img.shape[:2]
+            img_base = os.path.splitext(img_file)[0]
+
+            for idx, class_id, x_center, y_center, width, height in pending_crops:
+                x1, y1, x2, y2 = yolo_to_bbox(x_center, y_center, width, height, img_width, img_height)
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(img_width, x2)
+                y2 = min(img_height, y2)
+
+                cropped = img[y1:y2, x1:x2]
+                if cropped.size == 0:
+                    print(f"\n⚠️  Empty crop from {img_file} for class {class_id}")
+                    empty_crop_files.append(f"{img_file} (class {class_id})")
+                    continue
+
+                output_path = os.path.join(
+                    class_output_dirs[class_id],
+                    f"{fname_prefix}{img_base}_crop_{idx}.png"
+                )
+                cv2.imwrite(output_path, cropped)
+                crop_counts[class_id] += 1
 
         # Report unexpected classes
         if unexpected_classes:
@@ -269,99 +342,6 @@ def main():
             print(f"\n⚠️  {len(empty_annotation_files)} annotation file(s) are empty (no objects labelled)")
 
         print("------------------------------------------------------------\n")
-
-        # =================================================================
-        # PROCESSING ANNOTATIONS (crop images)
-        # =================================================================
-        print("\n------------------------------------------------------------")
-        print(f"|                  PROCESSING ANNOTATIONS{split_label:>19} |")
-        print("------------------------------------------------------------")
-
-        # Filename prefix to avoid collisions across splits
-        fname_prefix = f"{split_name}_" if split_name else ""
-
-        for txt_file in tqdm(txt_files, desc=f"Processing annotations{split_label}", unit="file"):
-            if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
-                continue
-
-            txt_path = os.path.join(split_label_dir, txt_file)
-
-            # Find corresponding image
-            base_name = os.path.splitext(txt_file)[0]
-            img_file = None
-            for ext in [".png", ".jpg", ".jpeg"]:
-                candidate = base_name + ext
-                if candidate in img_files_set:
-                    img_file = candidate
-                    break
-
-            if not img_file:
-                continue
-
-            img_path = os.path.join(split_imgs_dir, img_file)
-            img = cv2.imread(img_path)
-
-            if img is None:
-                print(f"\n⚠️  Could not read image: {img_file}")
-                error_reading_files.append(f"{split_name}/{img_file}" if split_name else img_file)
-                continue
-
-            img_height, img_width = img.shape[:2]
-
-            # Parse annotations
-            with open(txt_path, 'r') as f:
-                lines = f.readlines()
-
-            for idx, line in enumerate(lines):
-                parts = line.strip().split()
-                if len(parts) < 5:
-                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
-                    if entry not in invalid_annotation_files:
-                        invalid_annotation_files.append(entry)
-                    continue
-
-                class_id = parts[0]
-                if class_id not in classes_to_target:
-                    continue
-
-                try:
-                    x_center = float(parts[1])
-                    y_center = float(parts[2])
-                    width = float(parts[3])
-                    height = float(parts[4])
-                except ValueError:
-                    print(f"⚠️  Invalid annotation in {txt_file}: {line.strip()}")
-                    entry = f"{split_name}/{txt_file}" if split_name else txt_file
-                    if entry not in invalid_annotation_files:
-                        invalid_annotation_files.append(entry)
-                    continue
-
-                # Convert to pixel coordinates
-                x1, y1, x2, y2 = yolo_to_bbox(x_center, y_center, width, height, img_width, img_height)
-
-                # Ensure coordinates are within image bounds
-                x1 = max(0, x1)
-                y1 = max(0, y1)
-                x2 = min(img_width, x2)
-                y2 = min(img_height, y2)
-
-                # Crop the image
-                cropped = img[y1:y2, x1:x2]
-
-                if cropped.size == 0:
-                    print(f"\n⚠️  Empty crop from {img_file} for class {class_id}")
-                    empty_crop_files.append(f"{img_file} (class {class_id})")
-                    continue
-
-                # Save cropped image (prefix with split name to avoid collisions)
-                class_name = class_map[class_id]
-                output_dir = os.path.join(output_base, f"{class_name}")
-                base_name = os.path.splitext(img_file)[0]
-                output_filename = f"{fname_prefix}{base_name}_crop_{idx}.png"
-                output_path = os.path.join(output_dir, output_filename)
-
-                cv2.imwrite(output_path, cropped)
-                crop_counts[class_id] += 1
 
     # =========================================================================
     # COMBINED SUMMARY
