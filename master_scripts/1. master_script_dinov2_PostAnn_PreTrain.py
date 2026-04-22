@@ -183,6 +183,19 @@ def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
 
+    # Derive smart defaults from the images folder name
+    _folder_name = os.path.basename(os.path.normpath(imgs_path))
+
+    ## -----------------------------------------------##
+    ##   OUTPUT NAMES — always asked, with defaults    ##
+    ## -----------------------------------------------##
+    _default_cropped   = f"cropped_imgs_by_class_{_folder_name}"
+    _default_clust_dir = f"clustering_results_{_folder_name}"
+    _default_pdf_name  = f"PDF_REPORT_{_folder_name}"
+
+    cropped_bbox_dir   = os.path.join(RESULTS_DIR, _prompt_text("Subfolder for cropped images", _default_cropped))
+    output_cluster_dir = os.path.join(RESULTS_DIR, _prompt_text("Subfolder for clustering results", _default_clust_dir))
+
     ## -----------------------------------------------##
     ##   OPTIONAL PARAMETERS                           ##
     ## -----------------------------------------------##
@@ -192,12 +205,10 @@ def main():
 
     # Embedding Handling
     if change_defaults:
-        cropped_bbox_dir    = os.path.join(RESULTS_DIR, _prompt_text("Subfolder for cropped images", "cropped_imgs_by_class"))
         batch_size          = int(_prompt_text("DINOv2 batch size (reduce if GPU OOM)", 64))
         save_suffix         = _prompt_text("Embeddings filename", "embeddings_dinov2.npy")
         use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
     else:
-        cropped_bbox_dir    = os.path.join(RESULTS_DIR, "cropped_imgs_by_class")
         batch_size          = 64
         save_suffix         = "embeddings_dinov2.npy"
         use_embedding_cache = True
@@ -208,7 +219,7 @@ def main():
 
     # Cluster Handling — conditionally prompt eps OR percentile
     if auto_tune:
-        auto_tune_percentile = int(_prompt_text("Auto-tune k-NN percentile (90=tight, 95=balanced, 98=loose)", 95))
+        auto_tune_percentile = int(_prompt_text("Auto-tune k-NN percentile (90=tight, 95=balanced, 98=loose)", 90))
         epsilon = 0.15  # unused fallback
     else:
         epsilon = float(_prompt_text("DBSCAN epsilon (0.10=strict, 0.15=balanced, 0.20-0.30=lenient)", 0.15))
@@ -217,7 +228,6 @@ def main():
     if change_defaults:
         min_pts             = int(_prompt_text("Min points per cluster", 3))
         umap_min_dist       = float(_prompt_text("UMAP min_dist (lower=tighter packing)", 0.05))
-        output_cluster_dir  = os.path.join(RESULTS_DIR, _prompt_text("Subfolder for clustering results", "clustering_results_txt_files"))
         max_cluster_samples = int(_prompt_text("Max sample images saved per cluster", 20))
 
         # Uniform class handling
@@ -227,7 +237,6 @@ def main():
     else:
         min_pts             = 3
         umap_min_dist       = 0.05
-        output_cluster_dir  = os.path.join(RESULTS_DIR, "clustering_results_txt_files")
         max_cluster_samples = 20
         uniform_class_eps_threshold     = 0.1
         uniform_class_downsample_target = 4000
@@ -236,7 +245,27 @@ def main():
     # PDF handling
     temp_file    = os.path.join(RESULTS_DIR, "temp_ann_file.txt")
     pdf_generate = _ask(questionary.confirm("Generate PDF report?", default=True))
-    pdf_name     = _prompt_text("Output PDF filename (no extension)", "PDF_REPORT") if pdf_generate else "PDF_REPORT"
+    pdf_name     = _prompt_text("Output PDF filename (no extension)", _default_pdf_name) if pdf_generate else _default_pdf_name
+
+    ## -----------------------------------------------##
+    ##   PRE-FLIGHT: CHECK OUTPUT DIRS ARE EMPTY      ##
+    ## -----------------------------------------------##
+    dirs_to_check = [
+        (cropped_bbox_dir,   "Cropped images folder"),
+        (output_cluster_dir, "Clustering results folder"),
+    ]
+
+    print("\n" + "="*60)
+    for dir_path, dir_label in dirs_to_check:
+        if os.path.isdir(dir_path):
+            print(f"\n⚠️  {dir_label} already exists and is NOT empty:")
+            print(f"   {os.path.abspath(dir_path)}")
+            overwrite = _ask(questionary.confirm(
+                f"   Overwrite existing contents? (No = exit)", default=True))
+            if not overwrite:
+                print("\n   Exiting. Please choose a different output folder or clear the existing one.")
+                sys.exit(0)
+            print(f"   ✅ Will overwrite: {dir_path}")
 
     print("\n" + "="*60)
 
@@ -320,11 +349,21 @@ def main():
         print("\n" + "="*60)
         print("STEP 4/4: GENERATING PDF REPORT")
         print("="*60)
-        run_step("postannotation_scripts/4. generate_pdf.py", [
+        pdf_args = [
             "--temp_txt_file", temp_file,
             "--clustering_dir", output_cluster_dir,
-            "--pdf_name", os.path.join(output_cluster_dir, pdf_name)
-        ], cool_down_after=False)
+            "--pdf_name", os.path.join(output_cluster_dir, pdf_name),
+            "--imgs_path", imgs_path,
+            "--label_path", label_path,
+            "--classes_txt", classes_txt,
+            "--auto_tune_percentile", str(auto_tune_percentile),
+            "--epsilon", str(epsilon),
+        ]
+        if auto_tune:
+            pdf_args.append("--auto_tune")
+        if cross_class:
+            pdf_args.append("--cross_class")
+        run_step("postannotation_scripts/4. generate_pdf.py", pdf_args, cool_down_after=False)
 
         # Ask user whether to delete temp file
         print("\n" + "="*60)

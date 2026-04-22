@@ -212,6 +212,9 @@ All parameters are configured via interactive prompts. Clustering params are alw
 6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine number of rows
 7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 75 for ~80% file size reduction
 8. **PIL Decompression Bomb**: Script 4 disables PIL's `MAX_IMAGE_PIXELS` limit to handle large montages (25+ clusters)
+9. **PDF Page 1 — table-only layout**: Script 4 no longer generates bar/imbalance charts; Page 1 uses three ReportLab tables (dataset overview, pipeline config, per-class clustering summary). No matplotlib needed for Page 1.
+10. **PDF Page 2 — graph selection**: If `--cross_class` flag passed and `cross_class_separability.png` exists in clustering dir, it is shown. Otherwise falls back to `all_classes_overview.png`. If neither exists, Page 2 is skipped silently.
+11. **PDF args from master script**: Script 4 now accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--cross_class` — all passed automatically by the pre-training master script.
 
 ## File Naming Patterns
 
@@ -227,8 +230,15 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - Script 2 outputs: `{save_suffix}.npy` + `{save_suffix_without_.npy}_image_list.txt`
   - Default: `embeddings_dinov2.npy` + `embeddings_dinov2_image_list.txt`
   - Custom: `custom_emb.npy` + `custom_emb_image_list.txt`
-- Script 3 outputs: `{class}_clusters.png`, `{class}_montage.png`, `cluster_statistics.csv`
+- Script 3 outputs: `{class}_clusters.png`, `{class}_montage.png`, `cluster_statistics.csv`, `all_classes_overview.png`, `cross_class_separability.png` (if `--cross_class`)
 - Script 4 outputs: `{pdf_name}.pdf` + `temp_pdf_charts/` directory with temp JPEG chunks (auto-cleaned)
+
+### Pre-Training Master Script Output Naming (folder-name-derived)
+The pre-training master script derives all output names from the images folder name (`{FolderName}`) at prompt time:
+- Cropped images: `postann_pretrain_results/cropped_imgs_by_class_{FolderName}/`
+- Clustering results: `postann_pretrain_results/clustering_results_{FolderName}/`
+- PDF report: `postann_pretrain_results/clustering_results_{FolderName}/PDF_REPORT_{FolderName}.pdf`
+These are always prompted with the derived default shown — user can accept or override.
 
 ## Dependencies
 

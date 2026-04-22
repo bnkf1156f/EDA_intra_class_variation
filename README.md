@@ -254,25 +254,30 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 
 1. **Paths** (with autocomplete + validation):
    - Images folder, Labels folder, classes.txt file
-2. **"Change default parameters?"** — if No, skips embedding/clustering/PDF detail params
-3. **Clustering flags** (always asked):
+2. **Output folder names** (always asked, with smart defaults from your dataset folder name):
+   - Subfolder for cropped images (default: `cropped_imgs_by_class_{FolderName}`)
+   - Subfolder for clustering results (default: `clustering_results_{FolderName}`)
+3. **"Change default parameters?"** — if No, skips embedding/clustering detail params
+4. **Clustering flags** (always asked):
    - Enable auto-tune eps? (Yes/No) — auto-calculates optimal epsilon per class
    - Enable cross-class analysis? (Yes/No) — compares embeddings across classes
-4. **Conditional clustering param**:
+5. **Conditional clustering param**:
    - If auto-tune ON → asks k-NN percentile (90=tight, 95=balanced, 98=loose)
    - If auto-tune OFF → asks DBSCAN epsilon (0.10=strict, 0.15=balanced, 0.20-0.30=lenient)
-5. **Generate PDF report?** (Yes/No confirm)
+6. **Generate PDF report?** (Yes/No confirm)
+   - Output PDF filename (default: `PDF_REPORT_{FolderName}`)
 
 **If "Change default parameters?" = Yes**, also prompts for:
-- Cropped images output folder, DINOv2 batch size, embeddings filename
-- Use embedding cache, min points per cluster, UMAP min_dist
-- Clustering output folder, max sample images per cluster
+- DINOv2 batch size, embeddings filename, use embedding cache
+- Min points per cluster, UMAP min_dist, max sample images per cluster
 - Uniform class handling thresholds
 
 #### Default Values
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cropped_bbox_dir` | `postann_pretrain_results/cropped_imgs_by_class` | Output folder for cropped images |
+| `cropped_bbox_dir` | `postann_pretrain_results/cropped_imgs_by_class_{FolderName}` | Output folder for cropped images |
+| `output_cluster_dir` | `postann_pretrain_results/clustering_results_{FolderName}` | Clustering results folder |
+| `pdf_name` | `PDF_REPORT_{FolderName}` | Output PDF filename (no extension) |
 | `batch_size` | `64` | DINOv2 batch size |
 | `save_suffix` | `embeddings_dinov2.npy` | Embeddings filename |
 | `use_embedding_cache` | `True` | Cache embeddings for faster re-runs |
@@ -282,10 +287,10 @@ The script uses **interactive questionary prompts** — no need to edit code. It
 | `epsilon` | `0.15` | DBSCAN eps fallback (only if auto-tune OFF) |
 | `min_pts` | `3` | Min points per cluster |
 | `umap_min_dist` | `0.05` | UMAP min_dist (0.0=tight, 0.1=loose) |
-| `output_cluster_dir` | `postann_pretrain_results/clustering_results_txt_files` | Clustering results folder |
 | `max_cluster_samples` | `20` | Max sample images per cluster |
 | `pdf_generate` | `True` | Generate PDF report |
-| `pdf_name` | `PDF_REPORT` | Output PDF filename (no extension) |
+
+> `{FolderName}` = the name of your images folder (e.g., `MyDataset` → `cropped_imgs_by_class_MyDataset`)
 
 #### Pipeline Steps
 1. **Crop Extraction** (`postannotation_scripts/1. ann_txt_files_crop_bbox.py`)
@@ -304,9 +309,10 @@ The script uses **interactive questionary prompts** — no need to edit code. It
    - Cross-class separability analysis if selected
 
 4. **PDF Report Generation** (Optional - `postannotation_scripts/4. generate_pdf.py`)
-   - Combines dataset statistics and clustering visualizations
-   - Creates professional multi-page PDF report
-   - Only runs if `pdf_generate = True` 
+   - **Page 1**: Dataset overview table (paths, image/annotation counts, imbalance ratio) + pipeline config table (auto-tune, eps/percentile, cross-class) + per-class clustering summary table (samples, clusters, outliers, epsilon)
+   - **Page 2**: Cross-class separability graph (if enabled) or all-classes overview graph
+   - **Pages 3–N**: Per-class clustering montages with caption
+   - Only runs if `pdf_generate = True`
 
 ---
 
@@ -745,53 +751,58 @@ class2:  7 clusters, 12 outliers (6.0%)   → High diversity
 ### Script: postannotation_scripts/4. generate_pdf.py
 **Generate comprehensive PDF reports combining dataset statistics and clustering visualizations**
 
-Creates a multi-page PDF report that combines Script 1 dataset quality statistics with Script 3 clustering montages for professional presentation and documentation.
+Creates a professional multi-page PDF report. Typically invoked automatically by the master script, but can also be run standalone.
 
 #### Usage
 ```bash
 python "postannotation_scripts/4. generate_pdf.py" \
-    --temp_txt_file temp_ann_file.txt \
-    --clustering_dir clustering_results \
-    --pdf_name "REPORT"
+    --temp_txt_file postann_pretrain_results/temp_ann_file.txt \
+    --clustering_dir postann_pretrain_results/clustering_results_MyDataset \
+    --pdf_name "postann_pretrain_results/clustering_results_MyDataset/PDF_REPORT_MyDataset" \
+    --imgs_path path/to/images \
+    --label_path path/to/labels \
+    --classes_txt path/to/classes.txt \
+    --auto_tune --auto_tune_percentile 95 \
+    --cross_class
 ```
 
 #### Parameters
-| Parameter | Description |
-|-----------|-------------|
-| `--temp_txt_file` | Path to Script 1's temporary statistics txt file |
-| `--clustering_dir` | Path to Script 3's clustering output directory |
-| `--pdf_name` | Output PDF filename (without .pdf extension) |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--temp_txt_file` | required | Path to Script 1's temporary statistics txt file |
+| `--clustering_dir` | required | Path to Script 3's clustering output directory |
+| `--pdf_name` | required | Output PDF filename (without .pdf extension) |
+| `--imgs_path` | None | Images folder path (shown in PDF overview table) |
+| `--label_path` | None | Labels folder path (shown in PDF overview table) |
+| `--classes_txt` | None | Classes file path (shown in PDF overview table) |
+| `--auto_tune` | False | Whether auto-tune eps was used (affects which config row is shown) |
+| `--auto_tune_percentile` | 95 | k-NN percentile used (shown in config table when auto-tune ON) |
+| `--epsilon` | 0.15 | Manual epsilon used (shown in config table when auto-tune OFF) |
+| `--cross_class` | False | Whether cross-class analysis was run (controls Page 2 graph) |
 
 #### What It Does
-1. **Parses Script 1 statistics**: Dataset quality, class distribution, imbalance warnings
+1. **Parses Script 1 statistics**: Dataset quality, class distribution, imbalance ratio
 2. **Loads Script 3 cluster data**: Reads `cluster_statistics.csv` for per-class metrics
-3. **Generates visualizations**: Bar charts for class distribution and imbalance ratios
-4. **Combines montages**: Embeds clustering montages for each class
-5. **Smart image handling**:
-   - Compresses images to JPEG quality 75 for smaller file sizes
-   - Splits tall montages at cluster row boundaries (no clusters cut in half)
-   - Adds continuation labels when montages span multiple pages
-6. **Creates PDF**: Professional multi-page report with proper formatting
-
-#### Features
-- **Automatic image compression**: Reduces PDF size by ~80% using JPEG quality 75
-- **Intelligent splitting**: Montages split at cluster boundaries, never mid-cluster
-- **Page-aware layout**: Fits multiple cluster rows per page, adds continuation labels
-- **Error handling**: Creates placeholder images for missing montages
-- **PIL decompression bomb protection disabled**: Handles large montages (25+ clusters)
+3. **Builds structured tables**: No matplotlib bar charts — all info in clean table format
+4. **Embeds class montages**: Smart splitting at cluster row boundaries, never mid-cluster
+5. **Selects overview graph**: Cross-class separability plot or all-classes overview depending on run config
 
 #### Output Structure
 ```
-Page 1: Dataset Quality Report
-  - Dataset overview statistics
-  - Class distribution bar chart
-  - Class imbalance analysis chart
+Page 1: Dataset & Config Overview
+  - Dataset overview table (paths, image/annotation counts, imbalance ratio)
+  - Pipeline configuration table (embedding model, auto-tune, eps/percentile, cross-class)
+  - Class distribution & clustering summary table (samples, clusters, outliers, eps per class)
 
-Pages 2-N: Per-Class Clustering Montages
+Page 2: Separability Graph
+  - Cross-class separability plot (if cross-class enabled + file exists)
+  - OR all-classes overview plot (fallback)
+
+Pages 3–N: Per-Class Clustering Montages
   - Class title
-  - Montage image (possibly split across pages)
-  - Continuation labels (e.g., "Continuation - Clusters 3 to 5")
-  - Statistics: Samples | Clusters | Outliers | Epsilon
+  - Montage image (possibly split across pages at cluster row boundaries)
+  - Continuation labels (e.g., "Continuation — Clusters 3 to 5")
+  - Caption: Samples | Clusters | Outliers (rate) | Epsilon
 ```
 
 #### Technical Details
