@@ -958,4 +958,3 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" \
 * DBSCAN Understanding: https://medium.com/@sachinsoni600517/clustering-like-a-pro-a-beginners-guide-to-dbscan-6c8274c362c4
 * YOLOv8 Embeddings: https://docs.ultralytics.com/modes/predict/#inference-arguments
 * Post-training Pipeline: https://medium.com/@albertferrevidal/facings-product-identifier-using-yolov8-and-image-embeddings-d3ca34463022
-* SigLIP: https://huggingface.co/docs/transformers/en/model_doc/siglip
