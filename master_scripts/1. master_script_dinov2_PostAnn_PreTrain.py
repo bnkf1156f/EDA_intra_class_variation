@@ -11,6 +11,8 @@ import gc
 import time
 import psutil
 import os
+import shutil
+from pathlib import Path
 import torch
 import questionary
 
@@ -214,8 +216,8 @@ def main():
         use_embedding_cache = True
 
     # Clustering flags
-    auto_tune   = _ask(questionary.confirm("Enable auto-tune eps?", default=True))
-    cross_class = _ask(questionary.confirm("Enable cross-class analysis?", default=True))
+    auto_tune        = _ask(questionary.confirm("Enable auto-tune eps?", default=True))
+    save_class_scatter = _ask(questionary.confirm("Save per-class UMAP scatter plots? (slow — runs UMAP per class)", default=False))
 
     # Cluster Handling — conditionally prompt eps OR percentile
     if auto_tune:
@@ -246,26 +248,57 @@ def main():
     temp_file    = os.path.join(RESULTS_DIR, "temp_ann_file.txt")
     pdf_generate = _ask(questionary.confirm("Generate PDF report?", default=True))
     pdf_name     = _prompt_text("Output PDF filename (no extension)", _default_pdf_name) if pdf_generate else _default_pdf_name
+    pdf_quality  = int(_prompt_text("PDF image quality (1-95, 75=balanced, 90=high, 50=small file)", 75)) if change_defaults and pdf_generate else 75
 
     ## -----------------------------------------------##
     ##   PRE-FLIGHT: CHECK OUTPUT DIRS ARE EMPTY      ##
     ## -----------------------------------------------##
-    dirs_to_check = [
-        (cropped_bbox_dir,   "Cropped images folder"),
-        (output_cluster_dir, "Clustering results folder"),
-    ]
+    skip_to_clustering = False
 
     print("\n" + "="*60)
-    for dir_path, dir_label in dirs_to_check:
-        if os.path.isdir(dir_path):
-            print(f"\n⚠️  {dir_label} already exists and is NOT empty:")
-            print(f"   {os.path.abspath(dir_path)}")
+
+    # --- Cropped images folder check ---
+    if os.path.isdir(cropped_bbox_dir):
+        # Check if embeddings already exist in any class subfolder
+        existing_embs = list(Path(cropped_bbox_dir).rglob(save_suffix))
+        if existing_embs:
+            print(f"\n✅  Cropped images folder already exists WITH embeddings ({len(existing_embs)} class(es)):")
+            print(f"   {os.path.abspath(cropped_bbox_dir)}")
+            if pdf_generate:
+                print(f"   ⚠️  Note: reusing crops skips Step 1 — PDF dataset stats table will use cached temp_ann_file.txt if present.")
+            reuse = _ask(questionary.confirm(
+                "   Reuse existing crops + embeddings? (No = overwrite from scratch)", default=True))
+            if reuse:
+                skip_to_clustering = True
+                print("   ✅ Skipping Steps 1 & 2 — jumping straight to clustering.")
+            else:
+                print(f"   🗑️  Deleting: {os.path.abspath(cropped_bbox_dir)}")
+                shutil.rmtree(os.path.abspath(cropped_bbox_dir))
+                print(f"   ✅ Deleted — will recreate from scratch.")
+        else:
+            print(f"\n⚠️  Cropped images folder already exists and is NOT empty (no embeddings found inside):")
+            print(f"   {os.path.abspath(cropped_bbox_dir)}")
             overwrite = _ask(questionary.confirm(
-                f"   Overwrite existing contents? (No = exit)", default=True))
+                "   Overwrite existing contents? (No = exit)", default=True))
             if not overwrite:
                 print("\n   Exiting. Please choose a different output folder or clear the existing one.")
                 sys.exit(0)
-            print(f"   ✅ Will overwrite: {dir_path}")
+            print(f"   🗑️  Deleting: {os.path.abspath(cropped_bbox_dir)}")
+            shutil.rmtree(os.path.abspath(cropped_bbox_dir))
+            print(f"   ✅ Deleted — will recreate from scratch.")
+
+    # --- Clustering results folder check (only when not reusing) ---
+    if not skip_to_clustering and os.path.isdir(output_cluster_dir):
+        print(f"\n⚠️  Clustering results folder already exists and is NOT empty:")
+        print(f"   {os.path.abspath(output_cluster_dir)}")
+        overwrite = _ask(questionary.confirm(
+            "   Overwrite existing contents? (No = exit)", default=True))
+        if not overwrite:
+            print("\n   Exiting. Please choose a different output folder or clear the existing one.")
+            sys.exit(0)
+        print(f"   🗑️  Deleting: {os.path.abspath(output_cluster_dir)}")
+        shutil.rmtree(os.path.abspath(output_cluster_dir))
+        print(f"   ✅ Deleted — will recreate from scratch.")
 
     print("\n" + "="*60)
 
@@ -276,46 +309,49 @@ def main():
         class_ids_to_names.extend([str(i), name])
 
 
-    # Step 1: Crop YOLO bboxes -- Only send temp txt file if requested for PDF Generation
-    print("\n" + "="*60)
     total_steps = 4 if pdf_generate else 3
-    print(f"STEP 1/{total_steps}: EXTRACTING BOUNDING BOXES FROM LABELLED DATA")
-    print("⚠️  This step is time-consuming")
-    print("="*60)
-    if pdf_generate:
-        run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
-            "--imgs_path", imgs_path,
-            "--label_path", label_path,
-            "--classes"] + class_ids + [
-            "--class_ids_to_names"] + class_ids_to_names + [
-            "--output_dir", cropped_bbox_dir,
-            "--output_txt_file", temp_file
-        ])
+
+    if not skip_to_clustering:
+        # Step 1: Crop YOLO bboxes -- Only send temp txt file if requested for PDF Generation
+        print("\n" + "="*60)
+        print(f"STEP 1/{total_steps}: EXTRACTING BOUNDING BOXES FROM LABELLED DATA")
+        print("⚠️  This step is time-consuming")
+        print("="*60)
+        if pdf_generate:
+            run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
+                "--imgs_path", imgs_path,
+                "--label_path", label_path,
+                "--classes"] + class_ids + [
+                "--class_ids_to_names"] + class_ids_to_names + [
+                "--output_dir", cropped_bbox_dir,
+                "--output_txt_file", temp_file
+            ])
+        else:
+            run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
+                "--imgs_path", imgs_path,
+                "--label_path", label_path,
+                "--classes"] + class_ids + [
+                "--class_ids_to_names"] + class_ids_to_names + [
+                "--output_dir", cropped_bbox_dir
+            ])
+
+        # Step 2: Embed the cropped YOLO bbox
+        print("\n" + "="*60)
+        print(f"STEP 2/{total_steps}: GENERATING DINOV2 EMBEDDINGS")
+        print("="*60)
+        print("⚠️  This step is GPU-intensive")
+
+        embedding_args = [
+            "--root", cropped_bbox_dir,
+            "--batch", str(batch_size),
+            "--save_suffix", save_suffix
+        ]
+        if use_embedding_cache:
+            embedding_args.append("--use_cache")
+
+        run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", embedding_args, cool_down_after=True)
     else:
-        run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
-            "--imgs_path", imgs_path,
-            "--label_path", label_path,
-            "--classes"] + class_ids + [
-            "--class_ids_to_names"] + class_ids_to_names + [
-            "--output_dir", cropped_bbox_dir
-        ])
-
-
-    # Step 2: Embed the cropped YOLO bbox
-    print("\n" + "="*60)
-    print(f"STEP 2/{total_steps}: GENERATING DINOV2 EMBEDDINGS")
-    print("="*60)
-    print("⚠️  This step is GPU-intensive")
-    
-    embedding_args = [
-        "--root", cropped_bbox_dir,
-        "--batch", str(batch_size),
-        "--save_suffix", save_suffix
-    ]
-    if use_embedding_cache:
-        embedding_args.append("--use_cache")
-
-    run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", embedding_args, cool_down_after=True)
+        print(f"\n⏭️  STEP 1 & 2 SKIPPED — using existing crops + embeddings in: {cropped_bbox_dir}")
 
 
     # Step 3: Cluster using DBSCAN to visualize
@@ -338,8 +374,8 @@ def main():
     ]
     if auto_tune:
         cluster_args.append("--auto_tune")
-    if cross_class:
-        cluster_args.append("--cross_class")
+    if save_class_scatter:
+        cluster_args.append("--save_class_scatter")
 
     run_step("postannotation_scripts/3. clustering_of_classes_embeddings.py",
              cluster_args, cool_down_after=False)  # No cooling needed after last step
@@ -358,11 +394,10 @@ def main():
             "--classes_txt", classes_txt,
             "--auto_tune_percentile", str(auto_tune_percentile),
             "--epsilon", str(epsilon),
+            "--pdf_quality", str(pdf_quality),
         ]
         if auto_tune:
             pdf_args.append("--auto_tune")
-        if cross_class:
-            pdf_args.append("--cross_class")
         run_step("postannotation_scripts/4. generate_pdf.py", pdf_args, cool_down_after=False)
 
         # Ask user whether to delete temp file
@@ -397,7 +432,6 @@ def main():
         print("   but you will NOT be able to view the original cropped images again.")
         response = input("\n🗑️  Delete cropped images folder to free disk space? (y/n): ")
         if response.lower() == 'y':
-            import shutil
             try:
                 shutil.rmtree(cropped_bbox_dir)
                 print(f"   ✅ Deleted: {cropped_bbox_dir}/")

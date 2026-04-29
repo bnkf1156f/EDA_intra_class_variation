@@ -50,6 +50,16 @@ def parse_temp_txt_file(txt_path):
         'total_images': 0,
         'total_labels': 0,
         'background_images': 0,
+        'empty_crops': 0,
+        'degenerate_crops': 0,
+        'empty_annotation_files': 0,
+        'invalid_annotation_files': 0,
+        'error_reading_files': 0,
+        # issue file lists for the detail table
+        'missing_img_files': [],       # txt with no matching image
+        'unexpected_class_files': [],  # (class_id, count, [files])
+        'degenerate_crop_file_list': [],
+        'empty_crop_file_list': [],
     }
 
     in_class_section = False
@@ -110,6 +120,98 @@ def parse_temp_txt_file(txt_path):
                     stats['background_images'] = int(line.split('=>')[1].strip())
                 except Exception:
                     pass
+
+    # Parse counts from named sections
+    section_map = {
+        'EMPTY CROP FILES (Zero-size Crops):':          'empty_crops',
+        'DEGENERATE CROP FILES':                        'degenerate_crops',
+        'EMPTY ANNOTATION FILES (No Objects Labelled):': 'empty_annotation_files',
+        'INVALID ANNOTATION FILES (Malformed Data):':   'invalid_annotation_files',
+        'ERRORS WHILE READING FILES:':                  'error_reading_files',
+    }
+    current_key = None
+    for line in content.split('\n'):
+        for header, key in section_map.items():
+            if header in line:
+                current_key = key
+                break
+        if current_key and line.startswith('Count:'):
+            try:
+                stats[current_key] = int(line.split(':')[1].strip())
+            except Exception:
+                pass
+            current_key = None
+
+    # Parse issue file lists for detail table
+    lines = content.split('\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Degenerate crop file list
+        if 'DEGENERATE CROP FILES' in line and 'min dimension' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1  # skip Count line
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                stats['degenerate_crop_file_list'].append(lines[i].strip()[2:])
+                i += 1
+            continue
+
+        # Empty crop file list
+        if 'EMPTY CROP FILES (Zero-size Crops):' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                stats['empty_crop_file_list'].append(lines[i].strip()[2:])
+                i += 1
+            continue
+
+        # TXT files with no matching image
+        if 'TXT FILES WITH NO MATCHING IMAGE ON DISK:' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                stats['missing_img_files'].append(lines[i].strip()[2:])
+                i += 1
+            continue
+
+        # Unexpected class IDs — collect (class_id, annotation_count, [files])
+        if 'UNEXPECTED CLASS IDs IN ANNOTATIONS' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1  # skip Count line
+            # skip "Details:" header if present
+            if i < len(lines) and lines[i].strip() == 'Details:':
+                i += 1
+            while i < len(lines):
+                l = lines[i].strip()
+                if l.startswith("Class ID '"):
+                    # "Class ID 'N' (M annotations, K file(s)):"
+                    try:
+                        cls_id = l.split("'")[1]
+                        ann_count = int(l.split('(')[1].split(' ')[0])
+                        files_in_entry = []
+                        i += 1
+                        while i < len(lines) and lines[i].strip().startswith('- '):
+                            files_in_entry.append(lines[i].strip()[2:])
+                            i += 1
+                        stats['unexpected_class_files'].append((cls_id, ann_count, files_in_entry))
+                    except Exception:
+                        i += 1
+                elif l == '' or l.startswith('='):
+                    break
+                else:
+                    i += 1
+            continue
+
+        i += 1
 
     return stats
 
@@ -207,8 +309,7 @@ def _table_style_header(header_color='#1f77b4'):
 
 def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
               imgs_path=None, label_path=None, classes_txt=None,
-              auto_tune=False, auto_tune_percentile=95, epsilon=0.15,
-              cross_class=False):
+              auto_tune=False, auto_tune_percentile=95, epsilon=0.15):
     """Build the complete PDF report."""
     print("\n" + "="*70)
     print("PDF REPORT GENERATION")
@@ -286,10 +387,59 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
         ['Class Imbalance Ratio (max/min)', imbalance_str],
     ]
 
+    bad_crops = stats.get('empty_crops', 0) + stats.get('degenerate_crops', 0)
+    bad_crops_str = f"{bad_crops}  (empty: {stats.get('empty_crops', 0)}, tiny <3px: {stats.get('degenerate_crops', 0)})"
+    if bad_crops > 0:
+        bad_crops_str = f"⚠  {bad_crops_str}"
+    dataset_rows.append(['Bad Crops (skipped)', bad_crops_str])
+
+    def _warn(n, label):
+        return f"⚠  {n} {label}" if n > 0 else str(n)
+
+    dataset_rows.append(['Empty Annotation Files (no objects)', _warn(stats.get('empty_annotation_files', 0), 'file(s)')])
+    dataset_rows.append(['Invalid Annotation Files (malformed)', _warn(stats.get('invalid_annotation_files', 0), 'file(s)')])
+    dataset_rows.append(['Errors Reading Image Files', _warn(stats.get('error_reading_files', 0), 'file(s)')])
+
     dataset_table = Table(dataset_rows, colWidths=[3*inch, 4.5*inch])
     dataset_table.setStyle(_table_style_header('#2c3e50'))
     story.append(dataset_table)
-    story.append(Spacer(1, 0.25*inch))
+    story.append(Spacer(1, 0.2*inch))
+
+    # --- Section: Issue Files Detail (only rendered if any issues exist) ---
+    issue_rows = []
+
+    def _add_issue_block(rows, header, file_list):
+        if not file_list:
+            return
+        rows.append([Paragraph(f"<b>{header}</b>", ParagraphStyle(
+            'IssueHeader', parent=normal_style, fontSize=9,
+            textColor=colors.HexColor('#c0392b'), fontName='Helvetica-Bold')), ''])
+        for entry in file_list:
+            rows.append(['', Paragraph(entry, ParagraphStyle(
+                'IssueFile', parent=normal_style, fontSize=8,
+                fontName='Helvetica', textColor=colors.HexColor('#555555')))])
+
+    _add_issue_block(issue_rows, "Degenerate Crops (<3px)", stats['degenerate_crop_file_list'])
+    _add_issue_block(issue_rows, "Empty Crops (zero-size)", stats['empty_crop_file_list'])
+    _add_issue_block(issue_rows, "TXT Files — Image Not Found", stats['missing_img_files'])
+
+    for cls_id, ann_count, files in stats['unexpected_class_files']:
+        _add_issue_block(
+            issue_rows,
+            f"Unexpected Class ID '{cls_id}' ({ann_count} annotations — labelling ignored)",
+            files
+        )
+
+    if issue_rows:
+        story.append(Paragraph("ANNOTATION ISSUE FILES", heading_style))
+        issue_table = Table(
+            [['Issue Type', 'File']] + issue_rows,
+            colWidths=[2.5*inch, 5*inch]
+        )
+        issue_ts = _table_style_header('#922b21')
+        issue_table.setStyle(issue_ts)
+        story.append(issue_table)
+        story.append(Spacer(1, 0.25*inch))
 
     # --- Section: Pipeline Configuration ---
     story.append(Paragraph("PIPELINE CONFIGURATION", heading_style))
@@ -306,13 +456,47 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
         ['Embedding Model', 'facebook/dinov2-base (768d)'],
         ['Auto-Tune Eps', 'Yes' if auto_tune else 'No'],
         [eps_config_label, eps_config_value],
-        ['Cross-Class Analysis', 'Yes' if cross_class else 'No'],
     ]
 
     config_table = Table(config_rows, colWidths=[3*inch, 4.5*inch])
     config_table.setStyle(_table_style_header('#1f77b4'))
     story.append(config_table)
     story.append(Spacer(1, 0.25*inch))
+
+    # --- Section: Annotation Distribution Bar Chart ---
+    if stats['class_data']:
+        import matplotlib.pyplot as plt
+        bar_chart_path = temp_dir / "annotation_distribution.png"
+        class_names_bar = [d['name'] for d in stats['class_data']]
+        ann_counts = [d['annotations'] for d in stats['class_data']]
+
+        fig_w = max(10, len(class_names_bar) * 0.35)
+        fig, ax = plt.subplots(figsize=(fig_w, 4.5))
+        bars = ax.bar(range(len(class_names_bar)), ann_counts, color='#3a7fc1', edgecolor='#2c5f8a', linewidth=0.5)
+
+        for bar, count in zip(bars, ann_counts):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(ann_counts) * 0.005,
+                    str(count), ha='center', va='bottom', fontsize=7, rotation=0)
+
+        ax.set_xticks(range(len(class_names_bar)))
+        ax.set_xticklabels(class_names_bar, rotation=45, ha='right', fontsize=8)
+        ax.set_ylabel('Annotation Count', fontsize=10)
+        ax.set_xlabel('Class', fontsize=10)
+        ax.set_title('Annotation Distribution per Class', fontsize=12, fontweight='bold')
+        ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+        ax.set_axisbelow(True)
+        plt.tight_layout()
+        plt.savefig(bar_chart_path, dpi=100, bbox_inches='tight')
+        plt.close()
+
+        from PIL import Image as PILImage
+        img_bar = PILImage.open(bar_chart_path)
+        bw, bh = img_bar.size
+        img_bar.close()
+        max_w = 7 * inch
+        bar_scaled_h = bh * (max_w / bw)
+        story.append(Image(str(bar_chart_path), width=max_w, height=bar_scaled_h))
+        story.append(Spacer(1, 0.2*inch))
 
     # --- Section: Per-Class Summary (replaces imbalance graph) ---
     story.append(Paragraph("CLASS DISTRIBUTION & CLUSTERING SUMMARY", heading_style))
@@ -350,31 +534,19 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
     story.append(PageBreak())
 
     # =========================================================================
-    # PAGE 2: Cross-class graph OR all_classes_overview
+    # PAGE 2+: Centroid overview plots (one page per centroid_overview_N.png)
     # =========================================================================
-    cross_class_path = Path(clustering_dir) / "cross_class_separability.png"
-    overview_path    = Path(clustering_dir) / "all_classes_overview.png"
-
-    if cross_class and cross_class_path.exists():
-        story.append(Paragraph("Cross-Class Separability Analysis", heading_style))
+    centroid_pages = sorted(Path(clustering_dir).glob("centroid_overview_*.png"))
+    for cp in centroid_pages:
+        page_num = cp.stem.replace("centroid_overview_", "")
+        story.append(Paragraph(f"Cluster Centroid Overview — Page {page_num}", heading_style))
         story.append(Spacer(1, 0.1*inch))
         story.append(Paragraph(
-            "DBSCAN applied across all class embeddings to reveal how well classes cluster separately. "
-            "Well-separated blobs indicate discriminative features; overlap suggests similar visual appearance.",
+            "Each point = cluster centroid (●) or sampled outlier (✕), colored by class. "
+            "Single UMAP fit on centroids + outliers — fast overview of inter-class and intra-class structure.",
             normal_style))
-        story.append(Spacer(1, 0.2*inch))
-        img = Image(str(cross_class_path), width=7*inch, height=5.5*inch)
-        story.append(img)
-        story.append(PageBreak())
-    elif overview_path.exists():
-        story.append(Paragraph("All Classes Overview", heading_style))
-        story.append(Spacer(1, 0.1*inch))
-        story.append(Paragraph(
-            "UMAP/DBSCAN overview showing cluster structure for all classes individually.",
-            normal_style))
-        story.append(Spacer(1, 0.2*inch))
-        img = Image(str(overview_path), width=7*inch, height=5.5*inch)
-        story.append(img)
+        story.append(Spacer(1, 0.15*inch))
+        story.append(Image(str(cp), width=7*inch, height=5.5*inch))
         story.append(PageBreak())
 
     # =========================================================================
@@ -513,7 +685,8 @@ def main():
     parser.add_argument("--auto_tune", action="store_true")
     parser.add_argument("--auto_tune_percentile", type=int, default=95)
     parser.add_argument("--epsilon", type=float, default=0.15)
-    parser.add_argument("--cross_class", action="store_true")
+    parser.add_argument("--pdf_quality", type=int, default=75,
+                        help="JPEG compression quality for images in PDF (1-95, default 75)")
 
     args = parser.parse_args()
 
@@ -521,14 +694,13 @@ def main():
         temp_txt_file=args.temp_txt_file,
         clustering_dir=args.clustering_dir,
         pdf_name=args.pdf_name,
-        pdf_quality=75,
+        pdf_quality=args.pdf_quality,
         imgs_path=args.imgs_path,
         label_path=args.label_path,
         classes_txt=args.classes_txt,
         auto_tune=args.auto_tune,
         auto_tune_percentile=args.auto_tune_percentile,
         epsilon=args.epsilon,
-        cross_class=args.cross_class,
     )
 
 

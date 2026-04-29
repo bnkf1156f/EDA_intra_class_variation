@@ -100,7 +100,7 @@ Use after annotation to understand intra-class variation — are your classes ho
 1. Images folder, labels folder, classes.txt
 2. Output subfolder names (smart defaults from your dataset folder name)
 3. "Change default parameters?" gate
-4. Clustering flags (always asked): auto-tune eps, cross-class analysis
+4. Clustering flags (always asked): auto-tune eps, per-class UMAP scatter (off by default)
 5. k-NN percentile (if auto-tune on) or manual epsilon (if off)
 6. Generate PDF?
 
@@ -112,7 +112,7 @@ Use after annotation to understand intra-class variation — are your classes ho
 | `auto_tune` | True | Auto-calculate DBSCAN epsilon per class |
 | `auto_tune_percentile` | 95 | k-NN percentile (90=tight, 95=balanced, 98=loose) |
 | `epsilon` | 0.15 | Manual eps fallback (only if auto-tune off) |
-| `cross_class` | True | Cross-class separability analysis |
+| `save_class_scatter` | False | Per-class UMAP scatter plots (slow — runs UMAP per class) |
 | `min_pts` | 3 | Min points per cluster |
 | `umap_min_dist` | 0.05 | UMAP min_dist |
 | `max_cluster_samples` | 20 | Max sample images per cluster |
@@ -212,7 +212,7 @@ Generates 768d DINOv2 embeddings per class. Saves `embeddings_dinov2.npy` + `emb
 ```bash
 # Auto-tune (recommended)
 python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
-    --root ./cropped_imgs_by_class --auto_tune --min_samples 3 --save_montage --cross_class
+    --root ./cropped_imgs_by_class --auto_tune --min_samples 3 --save_montage
 
 # Manual epsilon
 python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
@@ -227,7 +227,7 @@ python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
 | `--auto_tune_percentile` | 90 | 90=tight, 95=balanced, 98=loose |
 | `--umap_min_dist` | 0.05 | UMAP min_dist (0.0=tight, 0.1=loose) |
 | `--max_samples` | 5 | Sample images per cluster (outliers: all saved) |
-| `--cross_class` | False | Cross-class separability analysis |
+| `--save_class_scatter` | False | Per-class UMAP scatter plots (slow — runs UMAP per class) |
 | `--save_montage` | False | Generate image grid montages |
 | `--uniform_eps_threshold` | 0.10 | Below this eps = class treated as uniform |
 | `--uniform_downsample_target` | 5000 | Downsample target for uniform classes |
@@ -241,8 +241,7 @@ clustering_results/
 ├── {class}_samples/
 │   ├── cluster_0/
 │   └── outliers/
-├── all_classes_overview.png
-├── cross_class_separability.png
+├── centroid_overview_1.png
 └── cluster_statistics.csv
 ```
 
@@ -262,10 +261,10 @@ python "postannotation_scripts/4. generate_pdf.py" \
     --imgs_path path/to/images \
     --label_path path/to/labels \
     --classes_txt path/to/classes.txt \
-    --auto_tune --auto_tune_percentile 95 --cross_class
+    --auto_tune --auto_tune_percentile 95
 ```
 
-PDF structure: Page 1 = dataset overview + pipeline config + per-class clustering summary tables. Page 2 = cross-class separability or all-classes overview graph. Pages 3–N = per-class montages (split at cluster row boundaries, never mid-cluster).
+PDF structure: Page 1 = dataset overview table → pipeline config table → annotation distribution bar chart → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster).
 
 ### master_scripts/1. interactive_cluster_viewer.py (optional)
 

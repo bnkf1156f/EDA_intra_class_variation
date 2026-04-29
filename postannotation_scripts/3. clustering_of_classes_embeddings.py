@@ -3,7 +3,7 @@ Clustering using: Density-Based Spatial Clustering of Applications with Noise (D
     - unique approach to identifying clusters based on the density of data points
     - MinPts (Minimum Points), is a parameter that specifies min number of points required to form a dense region, which is consider a cluster.
     - Epsilon - key parameter, is max distance between two points for them to be considered as part of the same neighborhood.
-    - Unlike some clustering algorithms, DBSCAN does not predict the cluster membership of new, unseen data points. 
+    - Unlike some clustering algorithms, DBSCAN does not predict the cluster membership of new, unseen data points.
       Once the model is trained, it is applied to the existing dataset without the ability to generalize to new observations outside the training set.
 """
 
@@ -14,7 +14,7 @@ This script clusters embeddings WITHIN each class to discover sub-groups,
 outliers, and understand class heterogeneity. Saves sample images from each cluster.
 
 Usage:
-    python '.\EDA_intra_class_variation_scripts\3. clustering_of_classes_embeddings.py' --auto_tune --cross_class --save_montage
+    python '.\EDA_intra_class_variation_scripts\3. clustering_of_classes_embeddings.py' --auto_tune --save_montage
 """
 
 import matplotlib
@@ -31,6 +31,10 @@ import seaborn as sns
 from PIL import Image
 import shutil
 import pandas as pd
+
+CLASSES_PER_OVERVIEW_PAGE = 30
+MAX_OUTLIERS_PER_CLASS = 30
+
 
 def auto_tune_eps(embeddings, min_samples, percentile):
     """
@@ -51,58 +55,58 @@ def auto_tune_eps(embeddings, min_samples, percentile):
 
     # Converts each 768D embedding vector to unit length to make cosine distance calculations work properly
     embeddings_norm = normalize(embeddings, norm='l2')
-    
+
     # Find k-nearest neighbors
     neighbors = NearestNeighbors(n_neighbors=min_samples, metric='cosine')
     neighbors.fit(embeddings_norm)
     distances, _ = neighbors.kneighbors(embeddings_norm)
-    
+
     # Use the distance to the k-th nearest neighbor --- distance to the **farthest** of the k-nearest neighbors
     k_distances = np.sort(distances[:, -1])
-    
+
     # Choose eps at a percentile (avoids extreme outliers skewing the value) -- This means: "90% of points have their k-th neighbor within this distance" so as less as possible outliers
     optimal_eps = np.percentile(k_distances, percentile)
-    
+
     return optimal_eps
 
 def cluster_single_class(embeddings, class_name, eps, min_samples):
     """Apply DBSCAN to a single class's embeddings."""
     # DBSCAN works better on normalized embeddings in high-D space
     embeddings_norm = normalize(embeddings, norm='l2')
-    
+
     dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
     cluster_labels = dbscan.fit_predict(embeddings_norm)
-    
+
     n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
     n_outliers = np.sum(cluster_labels == -1)
-    
+
     print(f"\n{class_name}:")
     print(f"  - Found {n_clusters} sub-clusters")
     print(f"  - Identified {n_outliers} outliers ({n_outliers/len(embeddings)*100:.1f}%)")
-    
+
     return cluster_labels, n_clusters, n_outliers
 
 def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, max_samples):
     """Save sample images from each cluster and outliers."""
     cluster_dir = output_dir / f"{class_name}_samples"
     cluster_dir.mkdir(exist_ok=True)
-    
+
     # Get unique clusters (excluding -1 which is outliers)
     unique_clusters = sorted(set(cluster_labels))
-    
+
     print(f"  - Saving sample images to: {cluster_dir}")
-    
+
     for cluster_id in unique_clusters:
         # Get indices for this cluster
         cluster_mask = cluster_labels == cluster_id
         cluster_indices = np.where(cluster_mask)[0]
-        
+
         # Determine folder name
         if cluster_id == -1:
             folder_name = "outliers"
         else:
             folder_name = f"cluster_{cluster_id}"
-        
+
         cluster_folder = cluster_dir / folder_name
         cluster_folder.mkdir(exist_ok=True)
 
@@ -113,69 +117,61 @@ def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, ma
         else:
             n_samples = min(max_samples, len(cluster_indices))
             sampled_indices = np.random.choice(cluster_indices, n_samples, replace=False)
-        
+
         # Copy images
         for idx in sampled_indices:
             src_path = image_files[idx]
             dst_path = cluster_folder / src_path.name
             shutil.copy2(src_path, dst_path)
-        
+
         print(f"    - {folder_name}: saved {n_samples}/{len(cluster_indices)} samples")
 
 def create_cluster_montage(image_files, cluster_labels, class_name, output_path, max_per_cluster):
     """Create a montage showing sample images from each cluster."""
     unique_clusters = sorted(set(cluster_labels))
     n_clusters = len(unique_clusters)
-    
-    # Calculate grid size
+
     n_cols = max_per_cluster
     n_rows = n_clusters
-    
+
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 3, n_rows * 3))
 
-    # Handle single row or single column cases
     if n_rows == 1 and n_cols == 1:
-        axes = np.array([[axes]])  # Convert single axis to 2D array
+        axes = np.array([[axes]])
     elif n_rows == 1:
         axes = axes.reshape(1, -1)
     elif n_cols == 1:
         axes = axes.reshape(-1, 1)
-    
+
     for row_idx, cluster_id in enumerate(unique_clusters):
-        # Get indices for this cluster
         cluster_mask = cluster_labels == cluster_id
         cluster_indices = np.where(cluster_mask)[0]
-        
-        # Sample images
+
         n_samples = min(max_per_cluster, len(cluster_indices))
         sampled_indices = np.random.choice(cluster_indices, n_samples, replace=False)
-        
-        # Determine title
+
         if cluster_id == -1:
             row_title = f"Outliers (n={len(cluster_indices)})"
             color = 'red'
         else:
             row_title = f"Cluster {cluster_id} (n={len(cluster_indices)})"
             color = 'blue'
-        
+
         for col_idx in range(n_cols):
             ax = axes[row_idx, col_idx]
-            
             if col_idx < len(sampled_indices):
-                # Load and display image
                 img_path = image_files[sampled_indices[col_idx]]
-                img = Image.open(img_path)
-                ax.imshow(img)
+                img = Image.open(img_path).convert("RGB")
+                img.thumbnail((600, 600), Image.LANCZOS)
+                ax.imshow(np.asarray(img))
                 ax.set_title(img_path.name, fontsize=8)
-            
             ax.axis('off')
-        
-        # Add row label
-        axes[row_idx, 0].text(-0.1, 0.5, row_title, 
+
+        axes[row_idx, 0].text(-0.1, 0.5, row_title,
                              transform=axes[row_idx, 0].transAxes,
                              fontsize=12, fontweight='bold', color=color,
                              rotation=90, va='center', ha='right')
-    
+
     plt.suptitle(f'Cluster Samples: {class_name}', fontsize=16, fontweight='bold')
     plt.tight_layout()
     plt.savefig(output_path, dpi=200, bbox_inches='tight')
@@ -185,147 +181,163 @@ def create_cluster_montage(image_files, cluster_labels, class_name, output_path,
 def visualize_intra_class(X_2d, cluster_labels, class_name, output_path):
     """Visualize clusters within a single class."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
-    
+
     # Plot 1: Full scatter plot
     outlier_mask = cluster_labels == -1
-    
+
     # Plot outliers
     if np.any(outlier_mask):
         ax1.scatter(X_2d[outlier_mask, 0], X_2d[outlier_mask, 1],
                    c='red', marker='x', s=100, alpha=0.6,
                    label='Outliers', linewidths=2)
-    
+
     # Plot clusters
     unique_clusters = sorted(set(cluster_labels[~outlier_mask]))
     colors = sns.color_palette('husl', n_colors=len(unique_clusters))
-    
+
     for i, cluster in enumerate(unique_clusters):
         mask = cluster_labels == cluster
         ax1.scatter(X_2d[mask, 0], X_2d[mask, 1],
                    c=[colors[i]], s=100, alpha=0.7,
                    label=f'Sub-cluster {cluster} (n={np.sum(mask)})')
-    
+
     ax1.set_title(f'Intra-Class Variation: {class_name}')
     ax1.set_xlabel('UMAP Dimension 1')
     ax1.set_ylabel('UMAP Dimension 2')
     ax1.legend()
-    
+
     # Plot 2: Cluster size distribution
     cluster_counts = [np.sum(cluster_labels == c) for c in unique_clusters]
     outlier_count = np.sum(outlier_mask)
-    
+
     labels = [f'C{c}' for c in unique_clusters] + ['Outliers']
     counts = cluster_counts + [outlier_count]
     colors_bar = list(colors) + ['red']
-    
+
     ax2.bar(labels, counts, color=colors_bar, alpha=0.7)
     ax2.set_title(f'Cluster Size Distribution')
     ax2.set_xlabel('Cluster ID')
     ax2.set_ylabel('Number of Samples')
     ax2.grid(axis='y', alpha=0.3)
-    
+
     for i, (label, count) in enumerate(zip(labels, counts)):
         ax2.text(i, count + 2, str(count), ha='center', va='bottom')
-    
+
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     print(f"  - Saved visualization: {output_path}")
     plt.close()
 
-def visualize_all_classes_overview(all_results, output_path):
-    """Create overview visualization showing all classes together."""
-    n_classes = len(all_results)
-    n_cols = 3
-    n_rows = (n_classes + n_cols - 1) // n_cols  # Ceiling division
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 6 * n_rows))
-    axes = axes.flatten()
-    
-    for idx, (class_name, X_2d, cluster_labels) in enumerate(all_results):
-        if idx >= len(axes):
-            break
-            
-        ax = axes[idx]
-        outlier_mask = cluster_labels == -1
-        
-        # Plot outliers
-        if np.any(outlier_mask):
-            ax.scatter(X_2d[outlier_mask, 0], X_2d[outlier_mask, 1],
-                      c='red', marker='x', s=50, alpha=0.6, linewidths=1.5)
-        
-        # Plot clusters
-        unique_clusters = sorted(set(cluster_labels[~outlier_mask]))
-        colors = sns.color_palette('husl', n_colors=len(unique_clusters))
-        
-        for i, cluster in enumerate(unique_clusters):
-            mask = cluster_labels == cluster
-            ax.scatter(X_2d[mask, 0], X_2d[mask, 1],
-                      c=[colors[i]], s=50, alpha=0.7)
-        
-        ax.set_title(f'{class_name}\n({len(unique_clusters)} clusters, {np.sum(outlier_mask)} outliers)')
-        ax.set_xlabel('UMAP 1')
-        ax.set_ylabel('UMAP 2')
-    
-    # Hide unused subplots
-    for idx in range(len(all_results), len(axes)):
-        axes[idx].axis('off')
-    
-    plt.suptitle('Intra-Class Variation Overview (All Classes)', fontsize=16)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"\nSaved overview: {output_path}")
-    plt.close()
 
-def analyze_cross_class_separability(X, y, class_names, eps, min_samples, output_path, umap_threshold=10000, umap_min_dist=0.05):
-    """Optional: Check if DBSCAN discovers class boundaries naturally."""
+def generate_centroid_overview(all_class_data, output_dir):
+    """
+    Build centroid overview plots — one UMAP fit on cluster centroids + sampled outliers.
+    Splits into pages of CLASSES_PER_OVERVIEW_PAGE classes each.
+
+    all_class_data: list of (class_name, embeddings, cluster_labels)
+    """
     print("\n" + "="*60)
-    print("CROSS-CLASS ANALYSIS (Optional)")
+    print("GENERATING CENTROID OVERVIEW PLOTS")
     print("="*60)
 
-    # Reduce dimensions - use optimized settings for large cross-class datasets
-    n_samples = len(X)
-    print(f"Cross-class analysis on {n_samples} total samples")
+    # --- Build small matrix: centroids + sampled outliers ---
+    points = []       # embedding vectors
+    point_labels = [] # class index
+    point_types = []  # 'centroid' or 'outlier'
+    point_cluster_ids = []  # cluster id (for centroid label)
+    class_names = [d[0] for d in all_class_data]
 
-    if n_samples > umap_threshold:
-        print(f"  Large dataset detected - using optimized UMAP settings")
-        reducer = umap.UMAP(
-            n_components=2,
-            random_state=42,
-            init='random',           # Avoid spectral failure
-            n_epochs=200,            # Reduce from default 500 (2.5x faster)
-            n_neighbors=15,
-            min_dist=umap_min_dist,
-            verbose=True
-        )
-    else:
-        reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=umap_min_dist)
+    for cls_idx, (class_name, embeddings, cluster_labels) in enumerate(all_class_data):
+        unique_clusters = sorted(set(cluster_labels))
 
-    X_2d = reducer.fit_transform(X)
-    
-    # Apply DBSCAN to all data
-    embeddings_norm = normalize(X, norm='l2')
-    dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
-    cluster_labels = dbscan.fit_predict(embeddings_norm)
-    
-    print(f"Discovered {len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)} clusters across all classes")
-    
-    # Visualize
-    plt.figure(figsize=(15, 10))
-    colors = sns.color_palette('husl', n_colors=len(class_names))
-    
-    for i, class_name in enumerate(class_names):
-        mask = y == i
-        plt.scatter(X_2d[mask, 0], X_2d[mask, 1],
-                   c=[colors[i]], s=50, alpha=0.6, label=class_name)
-    
-    plt.title('Cross-Class Embedding Space\n(Colored by ground-truth class)')
-    plt.xlabel('UMAP Dimension 1')
-    plt.ylabel('UMAP Dimension 2')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"Saved cross-class visualization: {output_path}")
-    plt.close()
+        for cid in unique_clusters:
+            mask = cluster_labels == cid
+            cluster_embs = embeddings[mask]
+
+            if cid == -1:
+                # Sample up to MAX_OUTLIERS_PER_CLASS outliers
+                n = min(MAX_OUTLIERS_PER_CLASS, len(cluster_embs))
+                chosen = cluster_embs[np.random.choice(len(cluster_embs), n, replace=False)]
+                for e in chosen:
+                    points.append(e)
+                    point_labels.append(cls_idx)
+                    point_types.append('outlier')
+                    point_cluster_ids.append(-1)
+            else:
+                centroid = cluster_embs.mean(axis=0)
+                points.append(centroid)
+                point_labels.append(cls_idx)
+                point_types.append('centroid')
+                point_cluster_ids.append(cid)
+
+    if not points:
+        print("  No data to plot.")
+        return []
+
+    points = np.array(points)
+    point_labels = np.array(point_labels)
+    point_types = np.array(point_types)
+    point_cluster_ids = np.array(point_cluster_ids)
+
+    print(f"  UMAP fit on {len(points)} points ({len(all_class_data)} classes)")
+
+    reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=0.1)
+    pts_2d = reducer.fit_transform(normalize(points, norm='l2'))
+
+    # --- Split classes into pages ---
+    n_classes = len(all_class_data)
+    class_colors = sns.color_palette('husl', n_colors=n_classes)
+    saved_paths = []
+
+    page_starts = list(range(0, n_classes, CLASSES_PER_OVERVIEW_PAGE))
+    for page_idx, start in enumerate(page_starts):
+        end = min(start + CLASSES_PER_OVERVIEW_PAGE, n_classes)
+        page_class_indices = list(range(start, end))
+
+        fig, ax = plt.subplots(figsize=(14, 10))
+
+        for cls_idx in page_class_indices:
+            class_name = class_names[cls_idx]
+            color = class_colors[cls_idx]
+
+            cls_mask = point_labels == cls_idx
+
+            # Outliers — x marker
+            outlier_mask = cls_mask & (point_types == 'outlier')
+            if np.any(outlier_mask):
+                ax.scatter(pts_2d[outlier_mask, 0], pts_2d[outlier_mask, 1],
+                           c=[color], marker='x', s=40, alpha=0.5, linewidths=1)
+
+            # Centroids — circle marker + cluster id label
+            centroid_mask = cls_mask & (point_types == 'centroid')
+            if np.any(centroid_mask):
+                ax.scatter(pts_2d[centroid_mask, 0], pts_2d[centroid_mask, 1],
+                           c=[color], marker='o', s=120, alpha=0.9,
+                           label=class_name, edgecolors='black', linewidths=0.5)
+                for i in np.where(centroid_mask)[0]:
+                    ax.annotate(str(point_cluster_ids[i]),
+                                (pts_2d[i, 0], pts_2d[i, 1]),
+                                fontsize=7, ha='center', va='bottom',
+                                color='black', alpha=0.8)
+
+        ax.set_title(f'Cluster Centroid Overview — Classes {start+1}–{end}', fontsize=14, fontweight='bold')
+        ax.set_xlabel('UMAP Dimension 1')
+        ax.set_ylabel('UMAP Dimension 2')
+        ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left', fontsize=8, framealpha=0.7)
+
+        # Legend note
+        ax.scatter([], [], c='gray', marker='o', s=80, label='● centroid')
+        ax.scatter([], [], c='gray', marker='x', s=40, label='✕ outlier')
+
+        plt.tight_layout()
+        out_path = output_dir / f"centroid_overview_{page_idx + 1}.png"
+        plt.savefig(out_path, dpi=100, bbox_inches='tight')
+        plt.close()
+        print(f"  Saved: {out_path}")
+        saved_paths.append(out_path)
+
+    return saved_paths
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -334,33 +346,29 @@ def main():
     parser.add_argument("--min_samples", type=int, default=3, help="Min samples to form cluster")
     parser.add_argument("--auto_tune", action="store_true", help="Automatically find optimal eps for each class")
     parser.add_argument("--auto_tune_percentile", type=int, default=90, help="Percentile for auto-tune (90=tight, 95=balanced, 98=loose)")
-    parser.add_argument("--umap_min_dist", type=float, default=0.05, help="UMAP min_dist parameter (0.0=tight, 0.1=loose)")
     parser.add_argument("--output_dir", type=str, default="clustering_results")
     parser.add_argument("--max_samples", type=int, default=5, help="Max sample images per cluster to save")
-    parser.add_argument("--cross_class", action="store_true", help="Also perform cross-class analysis")
     parser.add_argument("--save_montage", action="store_true", help="Create image montage for each class")
+    parser.add_argument("--save_class_scatter", action="store_true", help="Save per-class UMAP scatter plot (slow — runs UMAP per class)")
+    parser.add_argument("--umap_min_dist", type=float, default=0.05, help="UMAP min_dist for per-class scatter (only used with --save_class_scatter)")
     parser.add_argument("--save_suffix", type=str, default="embeddings_dinov2.npy", help="Embedding filename to load (must match script 2 output)")
     parser.add_argument("--uniform_eps_threshold", type=float, default=0.10, help="If auto-tuned eps < this, consider class uniform")
     parser.add_argument("--uniform_downsample_target", type=int, default=5000, help="Target samples for uniform classes")
     parser.add_argument("--uniform_min_samples", type=int, default=10000, help="Only downsample if class has more than this")
     args = parser.parse_args()
-    
+
     # Create output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Load all embeddings
+
     root = Path(args.root)
-    all_embeddings = []
-    all_labels = []
-    class_names = []
-    all_results = []
+    all_class_data = []  # (class_name, embeddings_to_cluster, cluster_labels)
     stats_data = []
-    
+
     print("="*60)
     print("INTRA-CLASS CLUSTERING ANALYSIS")
     print("="*60)
-    
+
     # Process each class separately
     for cls_folder in sorted(root.iterdir()):
         if not cls_folder.is_dir():
@@ -379,24 +387,21 @@ def main():
         base_name = args.save_suffix.replace('.npy', '')
         mapping_path = cls_folder / f"{base_name}_image_list.txt"
         if mapping_path.exists():
-            # Use the saved mapping (ensures correct alignment even if some images failed)
             with open(mapping_path, 'r') as f:
                 image_names = [line.strip() for line in f.readlines()]
             image_files = [cls_folder / name for name in image_names]
             print(f"\n✓ Using saved image mapping from: {mapping_path.name}")
         else:
-            # Fallback to sorted list (legacy behavior, may be misaligned if images failed)
             image_files = sorted([f for f in cls_folder.iterdir() if f.suffix == '.png'])
             print(f"\n⚠️  No mapping file found - using sorted image list (may be misaligned)")
-        
+
         if len(image_files) != len(embeddings):
             print(f"❌ ERROR: {class_name} has {len(image_files)} images but {len(embeddings)} embeddings")
             print(f"   CLASS '{class_name}' SKIPPING! Re-run script 2 to fix alignment.")
             continue
-        
+
         print(f"\nProcessing: {class_name} ({embeddings.shape[0]} samples)")
 
-        # Skip classes with too few samples for clustering
         if embeddings.shape[0] < args.min_samples:
             print(f"  ⚠️  Skipping {class_name}: only {embeddings.shape[0]} samples (need at least {args.min_samples} for min_samples)")
             continue
@@ -408,11 +413,6 @@ def main():
             eps_to_use = optimal_eps
         else:
             eps_to_use = args.eps
-        
-        # Store for cross-class analysis
-        all_embeddings.append(embeddings)
-        all_labels.extend([len(class_names)] * len(embeddings))
-        class_names.append(class_name)
 
         # Check if class is uniform and should be downsampled
         n_samples = len(embeddings)
@@ -423,7 +423,6 @@ def main():
             print(f"  ⚠️  Uniform class detected (eps={eps_to_use:.4f} < {args.uniform_eps_threshold})")
             print(f"  📊 Downsampling from {n_samples} to {args.uniform_downsample_target} samples (grid-based)")
 
-            # Grid-based downsampling: take every Nth sample
             stride = max(1, n_samples // args.uniform_downsample_target)
             subsample_indices = np.arange(0, n_samples, stride)[:args.uniform_downsample_target]
 
@@ -437,30 +436,11 @@ def main():
             image_files_to_cluster = image_files
             n_samples_to_cluster = n_samples
 
-        # Reduce dimensions for visualization
-        # For large datasets, use faster UMAP settings to avoid hanging
-        if n_samples_to_cluster > args.uniform_min_samples:
-            print(f"  Large dataset detected ({n_samples_to_cluster} samples) - using optimized UMAP settings")
-            reducer = umap.UMAP(
-                n_components=2,
-                random_state=42,
-                init='random',           # Avoid spectral failure
-                n_epochs=200,            # Reduce from default 500 (2.5x faster)
-                n_neighbors=15,          # Keep default
-                min_dist=args.umap_min_dist,
-                verbose=True             # Show progress
-            )
-        else:
-            reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=args.umap_min_dist)
-
-        X_2d = reducer.fit_transform(embeddings_to_cluster)
-
-        # Cluster within this class (using downsampled data if uniform)
+        # Cluster
         cluster_labels, n_clusters, n_outliers = cluster_single_class(
             embeddings_to_cluster, class_name, eps_to_use, args.min_samples
         )
-        
-        # Save statistics
+
         stats_data.append({
             'class': class_name,
             'n_samples': f"{n_samples_to_cluster}/{n_samples}" if is_uniform else n_samples,
@@ -471,62 +451,55 @@ def main():
             'downsampled': 'yes' if is_uniform else 'no'
         })
 
-        # Store results
-        all_results.append((class_name, X_2d, cluster_labels))
+        # Store for centroid overview
+        all_class_data.append((class_name, embeddings_to_cluster, cluster_labels))
 
-        # Visualize this class
-        output_path = output_dir / f"{class_name}_clusters.png"
-        visualize_intra_class(X_2d, cluster_labels, class_name, output_path)
+        # Per-class scatter — only if requested (runs UMAP per class, slow)
+        if args.save_class_scatter:
+            if n_samples_to_cluster > args.uniform_min_samples:
+                print(f"  Large dataset - using optimized UMAP settings")
+                reducer = umap.UMAP(
+                    n_components=2, random_state=42, init='random',
+                    n_epochs=200, n_neighbors=15,
+                    min_dist=args.umap_min_dist, verbose=True
+                )
+            else:
+                reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=args.umap_min_dist)
 
-        # Save sample images from each cluster (use downsampled data)
+            X_2d = reducer.fit_transform(embeddings_to_cluster)
+            output_path = output_dir / f"{class_name}_clusters.png"
+            visualize_intra_class(X_2d, cluster_labels, class_name, output_path)
+
+        # Save sample images from each cluster
         save_cluster_samples(image_files_to_cluster, cluster_labels, class_name, output_dir, args.max_samples)
 
         # Create montage if requested
         if args.save_montage:
             montage_path = output_dir / f"{class_name}_montage.png"
-            # Add note to montage title if downsampled
             montage_class_name = f"{class_name} (Uniform - analyzed {n_samples_to_cluster}/{n_samples} samples)" if is_uniform else class_name
             create_cluster_montage(image_files_to_cluster, cluster_labels, montage_class_name, montage_path, args.max_samples)
-    
-    # Create overview
-    if all_results:
-        overview_path = output_dir / "all_classes_overview.png"
-        visualize_all_classes_overview(all_results, overview_path)
-    
-    # Save statistics
+
+    # Save statistics CSV
     if stats_data:
         df = pd.DataFrame(stats_data)
         print("\nSummary:")
         print(df.to_string(index=False))
-        
-        ## COMMENT IF WANNA SAVE THE CLUSTER STATS
         stats_path = output_dir / "cluster_statistics.csv"
         df.to_csv(stats_path, index=False)
         print(f"\nSaved statistics: {stats_path}")
-    
 
-    # CROSS-CLASS VISUALIZATIONS
-    if args.cross_class and all_embeddings:
-        X = np.vstack(all_embeddings)
-        y = np.array(all_labels)
-        cross_path = output_dir / "cross_class_separability.png"
+    # Centroid overview — always generated
+    if all_class_data:
+        generate_centroid_overview(all_class_data, output_dir)
 
-        # Use median of per-class eps values if auto-tuned, otherwise use args.eps
-        if args.auto_tune and stats_data:
-            eps_values = [stat['eps_used'] for stat in stats_data]
-            cross_class_eps = np.median(eps_values)
-            print(f"\n📊 Cross-class analysis using median eps: {cross_class_eps:.4f} (from {len(eps_values)} classes)")
-        else:
-            cross_class_eps = args.eps
-
-        analyze_cross_class_separability(X, y, class_names, cross_class_eps, args.min_samples, cross_path, args.uniform_min_samples, args.umap_min_dist)
-    
     print("\n" + "="*60)
     print("Analysis complete! Check the output directory for:")
-    print("  - Scatter plots for each class")
+    print("  - Centroid overview plot(s): centroid_overview_N.png")
     print("  - Sample images organized by cluster")
     if args.save_montage:
         print("  - Image montages for visual comparison")
+    if args.save_class_scatter:
+        print("  - Per-class scatter plots")
     print("  - Statistics CSV file")
     print("="*60)
 

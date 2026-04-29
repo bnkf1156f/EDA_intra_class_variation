@@ -64,7 +64,7 @@ python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" --imgs_label_path 
 python "postannotation_scripts/2. save_dinov2_embeddings_per_class.py" --root ./postann_pretrain_results/cropped_imgs_by_class --batch 32
 
 # Step 3: DBSCAN clustering analysis
-python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./postann_pretrain_results/cropped_imgs_by_class --auto_tune --min_samples 3 --save_montage --cross_class
+python "postannotation_scripts/3. clustering_of_classes_embeddings.py" --root ./postann_pretrain_results/cropped_imgs_by_class --auto_tune --min_samples 3 --save_montage
 ```
 
 **Post-training workflow** (video + model → clustering):
@@ -207,14 +207,15 @@ All parameters are configured via interactive prompts. Clustering params are alw
 1. **Image-Embedding Alignment**: Script 2 creates a mapping file with name derived from `--save_suffix` parameter (e.g., `embeddings_dinov2.npy` → `embeddings_dinov2_image_list.txt`). Script 3 must receive the same `--save_suffix` value or alignment will fail. The mapping file ensures correct correspondence even when corrupted images are skipped.
 2. **Sorted Order**: Both scripts use `sorted()` on file paths to maintain consistent ordering
 3. **CSV Saving**: Script 3 has CSV saving enabled (not commented out)
-4. **Cross-Class Epsilon**: When `--auto_tune` is enabled with `--cross_class`, Script 3 uses the median of per-class eps values for cross-class DBSCAN clustering
-5. **Outlier Sampling**: Script 3 saves ALL outlier images (not sampled), while regular clusters are sampled up to `--max_samples`
+4. **Outlier Sampling**: Script 3 saves ALL outlier images (not sampled), while regular clusters are sampled up to `--max_samples`
+5. **Montage rendering**: Script 3 uses matplotlib for montages (layout: `n_cols × n_rows` grid at 200 DPI). Images are pre-decoded and resized via PIL before passing to `imshow` for speed. Layout and visual output identical to original.
 6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine number of rows
-7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 75 for ~80% file size reduction
+7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 75 for ~80% file size reduction (configurable via `--pdf_quality`)
 8. **PIL Decompression Bomb**: Script 4 disables PIL's `MAX_IMAGE_PIXELS` limit to handle large montages (25+ clusters)
-9. **PDF Page 1 — table-only layout**: Script 4 no longer generates bar/imbalance charts; Page 1 uses three ReportLab tables (dataset overview, pipeline config, per-class clustering summary). No matplotlib needed for Page 1.
-10. **PDF Page 2 — graph selection**: If `--cross_class` flag passed and `cross_class_separability.png` exists in clustering dir, it is shown. Otherwise falls back to `all_classes_overview.png`. If neither exists, Page 2 is skipped silently.
-11. **PDF args from master script**: Script 4 now accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--cross_class` — all passed automatically by the pre-training master script.
+9. **PDF Page 1 layout**: Dataset overview table → Pipeline config table → Annotation distribution bar chart → Per-class clustering summary table. Annotation issue files detail section rendered if any issues found.
+10. **PDF Page 2+ — centroid overview**: Pages 2+ show `centroid_overview_N.png` plots (one per page). `--cross_class` flag removed; replaced by `--save_class_scatter` for per-class UMAP scatter (off by default).
+11. **PDF args from master script**: Script 4 accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--pdf_quality` — all passed automatically by the pre-training master script.
+12. **Reuse crops/embeddings**: Master script pre-flight detects existing `.npy` embeddings in cropped folder — offers to skip Steps 1 & 2 and jump straight to clustering. Folder is `shutil.rmtree`-deleted before overwrite (not just warned).
 
 ## File Naming Patterns
 
@@ -230,7 +231,7 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - Script 2 outputs: `{save_suffix}.npy` + `{save_suffix_without_.npy}_image_list.txt`
   - Default: `embeddings_dinov2.npy` + `embeddings_dinov2_image_list.txt`
   - Custom: `custom_emb.npy` + `custom_emb_image_list.txt`
-- Script 3 outputs: `{class}_clusters.png`, `{class}_montage.png`, `cluster_statistics.csv`, `all_classes_overview.png`, `cross_class_separability.png` (if `--cross_class`)
+- Script 3 outputs: `{class}_clusters.png` (if `--save_class_scatter`), `{class}_montage.png` (if `--save_montage`), `cluster_statistics.csv`, `centroid_overview_N.png`
 - Script 4 outputs: `{pdf_name}.pdf` + `temp_pdf_charts/` directory with temp JPEG chunks (auto-cleaned)
 
 ### Pre-Training Master Script Output Naming (folder-name-derived)

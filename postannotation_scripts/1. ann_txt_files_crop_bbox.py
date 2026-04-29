@@ -142,6 +142,8 @@ def main():
     invalid_annotation_files = []
     error_reading_files = []
     empty_crop_files = []
+    degenerate_crop_files = []  # non-empty but min(W,H) < 3px
+    all_missing_imgs = []       # txt files whose image was not found on disk
     crop_counts = {cls: 0 for cls in classes_to_target}
 
     # =========================================================================
@@ -185,8 +187,10 @@ def main():
                 missing_imgs.append(txt)
 
         if missing_imgs:
-            print(missing_imgs)
-            raise RuntimeError(f"❌  HALT PROCESS! THE TXT FILES MISSING IMG FILES{split_label}")
+            print(f"⚠️  {len(missing_imgs)} TXT FILE(S) HAVE NO MATCHING IMAGE{split_label}:")
+            for m in missing_imgs:
+                print(f"    - {m}")
+            all_missing_imgs.extend(f"{split_name}/{m}" if split_name else m for m in missing_imgs)
         elif missing_txts:
             print(f"⚠️  NUMBER OF BACKGROUND PNG FILES WITH NO ANNOTATION/TXT FILE: {len(missing_txts)}\n")
         else:
@@ -294,6 +298,12 @@ def main():
                     empty_crop_files.append(f"{img_file} (class {class_id})")
                     continue
 
+                h_crop, w_crop = cropped.shape[:2]
+                if min(w_crop, h_crop) < 3:
+                    print(f"\n⚠️  Degenerate crop ({w_crop}x{h_crop}) from {img_file} for class {class_id}")
+                    degenerate_crop_files.append(f"{img_file} | class {class_id} | {w_crop}x{h_crop}px")
+                    continue
+
                 output_path = os.path.join(
                     class_output_dirs[class_id],
                     f"{fname_prefix}{img_base}_crop_{idx}.png"
@@ -303,15 +313,16 @@ def main():
 
         # Report unexpected classes
         if unexpected_classes:
-            print(f"\n❌  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names):")
+            print(f"\n⚠️  UNEXPECTED CLASS IDs FOUND (not in class_ids_to_names) — skipped, will appear in PDF:")
             print(f"    Expected class IDs: 0 to {len(class_map) - 1}")
             print(f"    -----------------------------------------------")
             for cls_id, files in unexpected_classes.items():
                 count = class_annotation_counts.get(cls_id, 0)
                 print(f"    Class ID '{cls_id}': {count} annotations in {len(files)} file(s)")
-                for f in files:
+                for f in files[:5]:
                     print(f"        - {f}")
-            raise RuntimeError(f"\n    ⚠️  FIX THESE ANNOTATIONS BEFORE YOLO TRAINING!")
+                if len(files) > 5:
+                    print(f"        ... and {len(files) - 5} more")
         else:
             print(f"✅  All annotations use valid class IDs")
 
@@ -435,6 +446,41 @@ def main():
                 f.write("Files:\n")
                 for file in empty_crop_files:
                     f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # Degenerate crop files
+            f.write("DEGENERATE CROP FILES (min dimension < 3px):\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(degenerate_crop_files)}\n")
+            if degenerate_crop_files:
+                f.write("Files:\n")
+                for file in degenerate_crop_files:
+                    f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # TXT files missing their image on disk
+            f.write("TXT FILES WITH NO MATCHING IMAGE ON DISK:\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(all_missing_imgs)}\n")
+            if all_missing_imgs:
+                f.write("Files:\n")
+                for file in all_missing_imgs:
+                    f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # Unexpected / out-of-range class IDs
+            f.write("UNEXPECTED CLASS IDs IN ANNOTATIONS (out of range — labelling ignored):\n")
+            f.write("-"*70 + "\n")
+            total_unexpected = sum(len(v) for v in unexpected_classes.values())
+            f.write(f"Count: {total_unexpected} file(s) affected\n")
+            if unexpected_classes:
+                f.write("Details:\n")
+                for cls_id in sorted(unexpected_classes.keys(), key=lambda x: int(x) if x.isdigit() else float('inf')):
+                    files = unexpected_classes[cls_id]
+                    count = class_annotation_counts.get(cls_id, 0)
+                    f.write(f"  Class ID '{cls_id}' ({count} annotations, {len(files)} file(s)):\n")
+                    for file in files:
+                        f.write(f"    - {file}\n")
             f.write("\n")
 
             # Class distribution & successful crops
