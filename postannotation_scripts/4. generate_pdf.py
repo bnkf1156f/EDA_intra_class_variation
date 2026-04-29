@@ -56,10 +56,12 @@ def parse_temp_txt_file(txt_path):
         'invalid_annotation_files': 0,
         'error_reading_files': 0,
         # issue file lists for the detail table
-        'missing_img_files': [],       # txt with no matching image
-        'unexpected_class_files': [],  # (class_id, count, [files])
+        'missing_img_files': [],           # txt with no matching image
+        'unexpected_class_files': [],      # (class_id, count, [files])
         'degenerate_crop_file_list': [],
         'empty_crop_file_list': [],
+        'background_image_file_list': [],  # images with no annotation txt
+        'empty_annotation_file_list': [],  # txt files that are empty
     }
 
     in_class_section = False
@@ -113,13 +115,8 @@ def parse_temp_txt_file(txt_path):
                 stats['total_labels'] = int(line.split(':')[1].strip())
             except Exception:
                 pass
-        elif 'PNG FILES WITH NO TXT ANNOTATIONS' in line or 'Background Images' in line:
-            # "PNG FILES WITH NO TXT ANNOTATIONS (Background Images) => 5"
-            if '=>' in line:
-                try:
-                    stats['background_images'] = int(line.split('=>')[1].strip())
-                except Exception:
-                    pass
+        elif 'PNG FILES WITH NO TXT ANNOTATIONS' in line:
+            pass  # count parsed via section_map below
 
     # Parse counts from named sections
     section_map = {
@@ -128,6 +125,7 @@ def parse_temp_txt_file(txt_path):
         'EMPTY ANNOTATION FILES (No Objects Labelled):': 'empty_annotation_files',
         'INVALID ANNOTATION FILES (Malformed Data):':   'invalid_annotation_files',
         'ERRORS WHILE READING FILES:':                  'error_reading_files',
+        'PNG FILES WITH NO TXT ANNOTATIONS':            'background_images',
     }
     current_key = None
     for line in content.split('\n'):
@@ -147,6 +145,32 @@ def parse_temp_txt_file(txt_path):
     i = 0
     while i < len(lines):
         line = lines[i]
+
+        # Background images (PNG with no TXT)
+        if 'PNG FILES WITH NO TXT ANNOTATIONS' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1  # skip Count line
+            if i < len(lines) and lines[i].strip() == 'Files:':
+                i += 1
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                stats['background_image_file_list'].append(lines[i].strip()[2:])
+                i += 1
+            continue
+
+        # Empty annotation files (TXT exists but has no objects)
+        if 'EMPTY ANNOTATION FILES (No Objects Labelled):' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1  # skip Count line
+            if i < len(lines) and lines[i].strip() == 'Files:':
+                i += 1
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                stats['empty_annotation_file_list'].append(lines[i].strip()[2:])
+                i += 1
+            continue
 
         # Degenerate crop file list
         if 'DEGENERATE CROP FILES' in line and 'min dimension' in line:
@@ -419,6 +443,8 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
                 'IssueFile', parent=normal_style, fontSize=8,
                 fontName='Helvetica', textColor=colors.HexColor('#555555')))])
 
+    _add_issue_block(issue_rows, "Background Images (no annotation TXT)", stats['background_image_file_list'])
+    _add_issue_block(issue_rows, "Empty Annotation Files (no objects)", stats['empty_annotation_file_list'])
     _add_issue_block(issue_rows, "Degenerate Crops (<3px)", stats['degenerate_crop_file_list'])
     _add_issue_block(issue_rows, "Empty Crops (zero-size)", stats['empty_crop_file_list'])
     _add_issue_block(issue_rows, "TXT Files — Image Not Found", stats['missing_img_files'])
