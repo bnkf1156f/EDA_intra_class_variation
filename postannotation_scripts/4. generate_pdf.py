@@ -593,6 +593,7 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
             if scaled_height <= max_page_height:
                 compressed_path = temp_dir / f"{class_name}_compressed.jpg"
                 img_pil.convert('RGB').save(compressed_path, 'JPEG', quality=pdf_quality, optimize=True)
+                img_pil.close()
                 story.append(Image(str(compressed_path), width=max_width, height=scaled_height))
             else:
                 if cluster_info is not None:
@@ -627,6 +628,7 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
                     story.append(Image(str(chunk_path), width=max_width, height=chunk_height))
                     if chunk_idx < num_chunks - 1:
                         story.append(PageBreak())
+                img_pil.close()
 
         except Exception as e:
             import traceback
