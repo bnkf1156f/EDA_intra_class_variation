@@ -143,6 +143,9 @@ def _load_classes_txt(path):
 
 
 def main():
+    # Anchor CWD to project root — safe no-op if already correct, guards against running from wrong dir
+    os.chdir(Path(__file__).resolve().parent.parent)
+
     # GPU specs print
     print("="*60)
     print("INTRA-CLASS VARIATION EDA PIPELINE")
@@ -210,10 +213,12 @@ def main():
         batch_size          = int(_prompt_text("DINOv2 batch size (reduce if GPU OOM)", 64))
         save_suffix         = _prompt_text("Embeddings filename", "embeddings_dinov2.npy")
         use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
+        num_workers         = int(_prompt_text("Crop extraction threads (4=safe for NVMe laptop, 8=fast NVMe desktop)", 4))
     else:
         batch_size          = 64
         save_suffix         = "embeddings_dinov2.npy"
         use_embedding_cache = True
+        num_workers         = 4
 
     # Clustering flags
     auto_tune        = _ask(questionary.confirm("Enable auto-tune eps?", default=True))
@@ -324,7 +329,8 @@ def main():
                 "--classes"] + class_ids + [
                 "--class_ids_to_names"] + class_ids_to_names + [
                 "--output_dir", cropped_bbox_dir,
-                "--output_txt_file", temp_file
+                "--output_txt_file", temp_file,
+                "--num_workers", str(num_workers)
             ])
         else:
             run_step("postannotation_scripts/1. ann_txt_files_crop_bbox.py", [
@@ -332,7 +338,8 @@ def main():
                 "--label_path", label_path,
                 "--classes"] + class_ids + [
                 "--class_ids_to_names"] + class_ids_to_names + [
-                "--output_dir", cropped_bbox_dir
+                "--output_dir", cropped_bbox_dir,
+                "--num_workers", str(num_workers)
             ])
 
         # Step 2: Embed the cropped YOLO bbox

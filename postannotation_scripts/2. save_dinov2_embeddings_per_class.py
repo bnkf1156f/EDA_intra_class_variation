@@ -186,7 +186,7 @@ def main():
         
         # Save mapping of valid image filenames to preserve alignment
         mapping_path = cls_folder / f"{args.save_suffix.replace('.npy', '_image_list.txt')}"
-        with open(mapping_path, 'w') as f:
+        with open(mapping_path, 'w', encoding='utf-8') as f:
             for p in valid_paths:
                 f.write(f"{p.name}\n")
         print(f"  Saved image mapping to: {mapping_path}")

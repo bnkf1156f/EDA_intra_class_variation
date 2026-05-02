@@ -226,7 +226,7 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - Embedding cache files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (DINOv2 embeddings, should be deleted before next run if inputs changed!)
 
 ### Pre-Training/Post-Training Scripts (under `postann_pretrain_results/` or `posttrain_results/` respectively)
-- Script 1a outputs: `{basename}_crop_{idx}.png` + `temp_ann_file.txt`
+- Script 1a outputs: `{basename}_crop_{idx}.jpg` (JPEG quality 95) + `temp_ann_file.txt`
 - Script 1b outputs: `frame_{frame_idx:06d}.png`
 - Script 2 outputs: `{save_suffix}.npy` + `{save_suffix_without_.npy}_image_list.txt`
   - Default: `embeddings_dinov2.npy` + `embeddings_dinov2_image_list.txt`

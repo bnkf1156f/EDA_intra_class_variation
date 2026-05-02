@@ -46,6 +46,7 @@ import os
 import cv2
 import argparse
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def yolo_to_bbox(x_center, y_center, width, height, img_width, img_height):
     """Convert YOLO format (normalized) to absolute pixel coordinates"""
@@ -86,6 +87,7 @@ def main():
     p.add_argument("--class_ids_to_names", nargs="+", required=True, help="Pairs of class_id class_name (e.g. 0 class0 1 class1 2 class2)")
     p.add_argument("--output_dir", default="cropped_imgs_by_class", help="Output Directory to store cropped images")
     p.add_argument("--output_txt_file", help="Temporary TXT file to store details for PDF generation at the end")
+    p.add_argument("--num_workers", type=int, default=4, help="Parallel threads for crop extraction (default 4; tune to your disk)")
     args = p.parse_args()
 
     # Resolve imgs_dir and label_dir
@@ -210,38 +212,62 @@ def main():
         # Filename prefix to avoid collisions across splits
         fname_prefix = f"{split_name}_" if split_name else ""
 
-        for txt_file in tqdm(txt_files, desc=f"Processing annotations{split_label}", unit="file"):
+        # ------------------------------------------------------------------
+        # Build per-file work items (parse all TXTs first, no imread yet).
+        # Workers do imread + crop + imwrite and return a result dict.
+        # Main thread merges all results after the pool finishes — no locks.
+        # ------------------------------------------------------------------
+        work_items = []  # (txt_file, entry, lines) for files that have target-class crops
+
+        for txt_file in txt_files:
             if txt_file == "classes.txt" or txt_file.endswith("_image_list.txt"):
                 continue
 
             txt_path = os.path.join(split_label_dir, txt_file)
             entry = f"{split_name}/{txt_file}" if split_name else txt_file
 
-            with open(txt_path, 'r') as f:
+            with open(txt_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
 
-            if len(lines) == 0:
-                empty_annotation_files.append(entry)
-                continue
+            work_items.append((txt_file, entry, lines))
 
-            # --- Validate all lines and collect target-class crops to perform ---
-            pending_crops = []  # (idx, class_id, x_center, y_center, w, h)
+        def process_one_file(txt_file, entry, lines):
+            """
+            Returns dict with keys:
+              empty_ann, invalid_ann, error_img, empty_crops, degenerate_crops,
+              ann_counts {class_id: int}, unexpected {class_id: [entry]},
+              crop_counts {class_id: int}
+            All results collected here; main thread merges after pool done.
+            """
+            result = {
+                "empty_ann": None,
+                "invalid_ann": None,
+                "error_img": None,
+                "empty_crops": [],
+                "degenerate_crops": [],
+                "ann_counts": {},
+                "unexpected": {},
+                "crop_counts": {},
+            }
+
+            if len(lines) == 0:
+                result["empty_ann"] = entry
+                return result
+
+            pending_crops = []
             for idx, line in enumerate(lines):
                 parts = line.strip().split()
                 if len(parts) < 5:
-                    print(f"⚠️  Invalid Annotation File: {txt_file}")
-                    if entry not in invalid_annotation_files:
-                        invalid_annotation_files.append(entry)
+                    result["invalid_ann"] = entry
                     continue
 
                 class_id = parts[0]
-                class_annotation_counts[class_id] = class_annotation_counts.get(class_id, 0) + 1
+                result["ann_counts"][class_id] = result["ann_counts"].get(class_id, 0) + 1
 
                 if class_id not in class_map:
-                    if class_id not in unexpected_classes:
-                        unexpected_classes[class_id] = []
-                    if entry not in unexpected_classes[class_id]:
-                        unexpected_classes[class_id].append(entry)
+                    result["unexpected"].setdefault(class_id, [])
+                    if entry not in result["unexpected"][class_id]:
+                        result["unexpected"][class_id].append(entry)
                     continue
 
                 if class_id not in classes_to_target:
@@ -253,18 +279,14 @@ def main():
                     width    = float(parts[3])
                     height   = float(parts[4])
                 except ValueError:
-                    print(f"⚠️  Invalid annotation in {txt_file}: {line.strip()}")
-                    if entry not in invalid_annotation_files:
-                        invalid_annotation_files.append(entry)
+                    result["invalid_ann"] = entry
                     continue
 
                 pending_crops.append((idx, class_id, x_center, y_center, width, height))
 
-            # Skip imread entirely if this file has no target-class annotations
             if not pending_crops:
-                continue
+                return result
 
-            # Find corresponding image
             base_name = os.path.splitext(txt_file)[0]
             img_file = None
             for ext in [".png", ".jpg", ".jpeg"]:
@@ -274,13 +296,12 @@ def main():
                     break
 
             if not img_file:
-                continue
+                return result
 
             img = cv2.imread(os.path.join(split_imgs_dir, img_file))
             if img is None:
-                print(f"\n⚠️  Could not read image: {img_file}")
-                error_reading_files.append(f"{split_name}/{img_file}" if split_name else img_file)
-                continue
+                result["error_img"] = f"{split_name}/{img_file}" if split_name else img_file
+                return result
 
             img_height, img_width = img.shape[:2]
             img_base = os.path.splitext(img_file)[0]
@@ -294,22 +315,50 @@ def main():
 
                 cropped = img[y1:y2, x1:x2]
                 if cropped.size == 0:
-                    print(f"\n⚠️  Empty crop from {img_file} for class {class_id}")
-                    empty_crop_files.append(f"{img_file} (class {class_id})")
+                    result["empty_crops"].append(f"{img_file} (class {class_id})")
                     continue
 
                 h_crop, w_crop = cropped.shape[:2]
                 if min(w_crop, h_crop) < 3:
-                    print(f"\n⚠️  Degenerate crop ({w_crop}x{h_crop}) from {img_file} for class {class_id}")
-                    degenerate_crop_files.append(f"{img_file} | class {class_id} | {w_crop}x{h_crop}px")
+                    result["degenerate_crops"].append(f"{img_file} | class {class_id} | {w_crop}x{h_crop}px")
                     continue
 
+                # Unique output path per crop — no two workers write the same file
                 output_path = os.path.join(
                     class_output_dirs[class_id],
-                    f"{fname_prefix}{img_base}_crop_{idx}.png"
+                    f"{fname_prefix}{img_base}_crop_{idx}.jpg"
                 )
-                cv2.imwrite(output_path, cropped)
-                crop_counts[class_id] += 1
+                cv2.imwrite(output_path, cropped, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                result["crop_counts"][class_id] = result["crop_counts"].get(class_id, 0) + 1
+
+            return result
+
+        # Run workers and collect results — merge only after all done
+        with ThreadPoolExecutor(max_workers=args.num_workers) as executor:
+            futures = {
+                executor.submit(process_one_file, txt_file, entry, lines): txt_file
+                for txt_file, entry, lines in work_items
+            }
+            for future in tqdm(as_completed(futures), total=len(futures),
+                               desc=f"Processing annotations{split_label}", unit="file"):
+                r = future.result()
+                if r["empty_ann"]:
+                    empty_annotation_files.append(r["empty_ann"])
+                if r["invalid_ann"] and r["invalid_ann"] not in invalid_annotation_files:
+                    invalid_annotation_files.append(r["invalid_ann"])
+                if r["error_img"]:
+                    error_reading_files.append(r["error_img"])
+                empty_crop_files.extend(r["empty_crops"])
+                degenerate_crop_files.extend(r["degenerate_crops"])
+                for cls_id, cnt in r["ann_counts"].items():
+                    class_annotation_counts[cls_id] = class_annotation_counts.get(cls_id, 0) + cnt
+                for cls_id, entries in r["unexpected"].items():
+                    unexpected_classes.setdefault(cls_id, [])
+                    for e in entries:
+                        if e not in unexpected_classes[cls_id]:
+                            unexpected_classes[cls_id].append(e)
+                for cls_id, cnt in r["crop_counts"].items():
+                    crop_counts[cls_id] = crop_counts.get(cls_id, 0) + cnt
 
         # Report unexpected classes
         if unexpected_classes:

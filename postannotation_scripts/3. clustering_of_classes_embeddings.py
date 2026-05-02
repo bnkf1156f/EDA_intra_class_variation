@@ -20,10 +20,7 @@ Usage:
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend to avoid tkinter threading issues
 import matplotlib.pyplot as plt
-from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import normalize
-from sklearn.neighbors import NearestNeighbors
-import umap
 from pathlib import Path
 import numpy as np
 import argparse
@@ -31,6 +28,24 @@ import seaborn as sns
 from PIL import Image
 import shutil
 import pandas as pd
+import time
+
+try:
+    import cuml
+    import torch
+    if not torch.cuda.is_available():
+        raise ImportError("cuML installed but no CUDA device available — falling back to CPU")
+    from cuml.cluster import DBSCAN as _DBSCAN
+    from cuml.neighbors import NearestNeighbors as _NearestNeighbors
+    from cuml.manifold import UMAP as _UMAP
+    GPU_BACKEND = True
+    print(f"[backend] cuML {cuml.__version__} detected — GPU mode")
+except ImportError as e:
+    from sklearn.cluster import DBSCAN as _DBSCAN
+    from sklearn.neighbors import NearestNeighbors as _NearestNeighbors
+    from umap import UMAP as _UMAP
+    GPU_BACKEND = False
+    print(f"[backend] CPU mode — {e}")
 
 CLASSES_PER_OVERVIEW_PAGE = 30
 MAX_OUTLIERS_PER_CLASS = 30
@@ -57,15 +72,28 @@ def auto_tune_eps(embeddings, min_samples, percentile):
     embeddings_norm = normalize(embeddings, norm='l2')
 
     # Find k-nearest neighbors
-    neighbors = NearestNeighbors(n_neighbors=min_samples, metric='cosine')
+    # GPU path: cuML kNN only supports euclidean — but on L2-normalized vectors,
+    # cosine_dist = euclidean² / 2, so we convert back after computing the percentile
+    t0 = time.time()
+    if GPU_BACKEND:
+        neighbors = _NearestNeighbors(n_neighbors=min_samples, metric='euclidean')
+    else:
+        neighbors = _NearestNeighbors(n_neighbors=min_samples, metric='cosine')
     neighbors.fit(embeddings_norm)
     distances, _ = neighbors.kneighbors(embeddings_norm)
+    print(f"  [time] kNN fit+query: {time.time()-t0:.2f}s")
 
     # Use the distance to the k-th nearest neighbor --- distance to the **farthest** of the k-nearest neighbors
-    k_distances = np.sort(distances[:, -1])
+    k_distances = np.sort(np.asarray(distances[:, -1]))
 
     # Choose eps at a percentile (avoids extreme outliers skewing the value) -- This means: "90% of points have their k-th neighbor within this distance" so as less as possible outliers
-    optimal_eps = np.percentile(k_distances, percentile)
+    pct = np.percentile(k_distances, percentile)
+
+    # Convert euclidean percentile back to cosine-domain so eps stays in cosine units throughout
+    if GPU_BACKEND:
+        optimal_eps = float(pct ** 2) / 2.0
+    else:
+        optimal_eps = float(pct)
 
     return optimal_eps
 
@@ -74,11 +102,21 @@ def cluster_single_class(embeddings, class_name, eps, min_samples):
     # DBSCAN works better on normalized embeddings in high-D space
     embeddings_norm = normalize(embeddings, norm='l2')
 
-    dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
+    # GPU path: cuML DBSCAN is euclidean-only — convert eps from cosine to euclidean domain.
+    # On unit vectors: euclidean² = 2 * cosine_dist, so eps_euc = sqrt(2 * eps_cos)
+    t0 = time.time()
+    if GPU_BACKEND:
+        eps_euc = np.sqrt(2.0 * eps)
+        dbscan = _DBSCAN(eps=eps_euc, min_samples=min_samples, metric='euclidean')
+    else:
+        dbscan = _DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
     cluster_labels = dbscan.fit_predict(embeddings_norm)
+    if GPU_BACKEND:
+        cluster_labels = np.asarray(cluster_labels)
+    print(f"  [time] DBSCAN fit_predict: {time.time()-t0:.2f}s")
 
     n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
-    n_outliers = np.sum(cluster_labels == -1)
+    n_outliers = int(np.sum(cluster_labels == -1))
 
     print(f"\n{class_name}:")
     print(f"  - Found {n_clusters} sub-clusters")
@@ -281,8 +319,12 @@ def generate_centroid_overview(all_class_data, output_dir):
 
     print(f"  UMAP fit on {len(points)} points ({len(all_class_data)} classes)")
 
-    reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=0.1)
+    t0 = time.time()
+    reducer = _UMAP(n_components=2, random_state=42, init='random', min_dist=0.1)
     pts_2d = reducer.fit_transform(normalize(points, norm='l2'))
+    if GPU_BACKEND:
+        pts_2d = np.asarray(pts_2d)
+    print(f"  [time] UMAP fit_transform (centroid overview): {time.time()-t0:.2f}s")
 
     # --- Split classes into pages ---
     n_classes = len(all_class_data)
@@ -387,12 +429,12 @@ def main():
         base_name = args.save_suffix.replace('.npy', '')
         mapping_path = cls_folder / f"{base_name}_image_list.txt"
         if mapping_path.exists():
-            with open(mapping_path, 'r') as f:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
                 image_names = [line.strip() for line in f.readlines()]
             image_files = [cls_folder / name for name in image_names]
             print(f"\n✓ Using saved image mapping from: {mapping_path.name}")
         else:
-            image_files = sorted([f for f in cls_folder.iterdir() if f.suffix == '.png'])
+            image_files = sorted([f for f in cls_folder.iterdir() if f.suffix.lower() in {'.png', '.jpg', '.jpeg'}])
             print(f"\n⚠️  No mapping file found - using sorted image list (may be misaligned)")
 
         if len(image_files) != len(embeddings):
@@ -456,17 +498,21 @@ def main():
 
         # Per-class scatter — only if requested (runs UMAP per class, slow)
         if args.save_class_scatter:
+            t0 = time.time()
             if n_samples_to_cluster > args.uniform_min_samples:
                 print(f"  Large dataset - using optimized UMAP settings")
-                reducer = umap.UMAP(
+                reducer = _UMAP(
                     n_components=2, random_state=42, init='random',
                     n_epochs=200, n_neighbors=15,
                     min_dist=args.umap_min_dist, verbose=True
                 )
             else:
-                reducer = umap.UMAP(n_components=2, random_state=42, init='random', min_dist=args.umap_min_dist)
+                reducer = _UMAP(n_components=2, random_state=42, init='random', min_dist=args.umap_min_dist)
 
             X_2d = reducer.fit_transform(embeddings_to_cluster)
+            if GPU_BACKEND:
+                X_2d = np.asarray(X_2d)
+            print(f"  [time] UMAP fit_transform (per-class scatter): {time.time()-t0:.2f}s")
             output_path = output_dir / f"{class_name}_clusters.png"
             visualize_intra_class(X_2d, cluster_labels, class_name, output_path)
 
@@ -488,7 +534,9 @@ def main():
         df.to_csv(stats_path, index=False)
         print(f"\nSaved statistics: {stats_path}")
 
-    # Centroid overview — always generated
+    # Centroid overview — delete stale pages from prior run before writing new ones
+    for stale in output_dir.glob("centroid_overview_*.png"):
+        stale.unlink()
     if all_class_data:
         generate_centroid_overview(all_class_data, output_dir)
 

@@ -13,8 +13,13 @@ Turn the EDA pipeline into a Slack-triggered service:
 - Uploads final PDF to Slack thread when done
 - Single user / local machine scope (Option A — no infra needed)
 - Need to clarify: stream progress vs just "done + PDF", and TS4 integration angle
+- S3 bucket -> pdf 
 
 ---
+
+## Dashboard instead of PDF
+- can be viewed over a dashboard or something with images saved / persisted under assets and if that saved us the hassle of generating documents
+- https://diffprog.slack.com/archives/C06Q7DXJDUJ/p1777549467871949
 
 ## Missing Labels Handling
 - Detect and report frames that are missing annotation label files
@@ -30,15 +35,6 @@ Turn the EDA pipeline into a Slack-triggered service:
 - Fold `interactive_cluster_viewer.py` as an optional step inside the master script prompts
 - User sees: "Generate interactive HTML viewer? [Y/n]"
 - Avoids needing to run it as a separate standalone script
-
----
-
-## GPU-Accelerated Clustering (cuML DBSCAN)
-- sklearn DBSCAN is CPU-only — bottleneck on large classes
-- Replace with `cuml.cluster.DBSCAN` (RAPIDS) — same API, GPU-accelerated
-- Also replace `NearestNeighbors` in `auto_tune_eps` with cuML GPU kNN
-- Note: RAPIDS requires conda install, CUDA 11.8 compatible — verify before implementing
-- Worth it only if classes have 10K+ samples; measure first after UMAP removal
 
 ---
 

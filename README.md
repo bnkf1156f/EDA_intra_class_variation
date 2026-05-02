@@ -117,6 +117,7 @@ Use after annotation to understand intra-class variation — are your classes ho
 | `umap_min_dist` | 0.05 | UMAP min_dist |
 | `max_cluster_samples` | 20 | Max sample images per cluster |
 | `use_embedding_cache` | True | Skip re-generation if embeddings exist |
+| `num_workers` | 4 | Crop extraction threads (behind "Change defaults?" gate) |
 
 **Pipeline steps** (run automatically):
 1. `postannotation_scripts/1. ann_txt_files_crop_bbox.py` — crop + validate dataset
@@ -171,7 +172,11 @@ python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" \
     --output_dir cropped_imgs_by_class
 ```
 
-Validates dataset before cropping — catches unexpected class IDs, empty labels, imbalance ratio >10x. Output: `cropped_imgs_by_class/{class}/*.png`
+Validates dataset before cropping — catches unexpected class IDs, empty labels, imbalance ratio >10x. Output: `cropped_imgs_by_class/{class}/*.jpg`
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--num_workers` | 4 | Crop extraction threads (4=safe NVMe laptop, 8=fast desktop) |
 
 ### postannotation_scripts/1. yolo_model_crop_bbox_per_class.py
 
@@ -232,6 +237,8 @@ python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
 | `--uniform_eps_threshold` | 0.10 | Below this eps = class treated as uniform |
 | `--uniform_downsample_target` | 5000 | Downsample target for uniform classes |
 | `--uniform_min_samples` | 10000 | Only downsample if class has more than this |
+
+**GPU backend**: Script 3 auto-detects cuML at startup. If cuML is installed and a CUDA device is available, uses GPU-accelerated DBSCAN + kNN + UMAP. Falls back to sklearn/umap-learn (CPU) silently otherwise — no config needed. Install cuML via conda in WSL2/Linux (see RAPIDS docs for CUDA-version-matched install command).
 
 Output:
 ```
