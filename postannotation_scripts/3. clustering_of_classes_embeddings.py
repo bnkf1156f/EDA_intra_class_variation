@@ -512,8 +512,9 @@ def main():
             'downsampled': 'yes' if is_uniform else 'no'
         })
 
-        # Store for centroid overview
-        all_class_data.append((class_name, embeddings_to_cluster, cluster_labels))
+        # Store for centroid overview — use original (non-PCA) embeddings so all classes share same 768d space
+        embeddings_for_overview = embeddings[subsample_indices] if is_uniform else embeddings
+        all_class_data.append((class_name, embeddings_for_overview, cluster_labels))
 
         # Per-class scatter — only if requested (runs UMAP per class, slow)
         if args.save_class_scatter:
