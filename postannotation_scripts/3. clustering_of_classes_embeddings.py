@@ -21,6 +21,7 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend to avoid tkinter threading issues
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import normalize
+from sklearn.decomposition import PCA
 from pathlib import Path
 import numpy as np
 import argparse
@@ -397,6 +398,7 @@ def main():
     parser.add_argument("--uniform_eps_threshold", type=float, default=0.10, help="If auto-tuned eps < this, consider class uniform")
     parser.add_argument("--uniform_downsample_target", type=int, default=5000, help="Target samples for uniform classes")
     parser.add_argument("--uniform_min_samples", type=int, default=10000, help="Only downsample if class has more than this")
+    parser.add_argument("--pca_components", type=int, default=128, help="PCA dims before clustering (0=disabled). Reduces 768d→Nd to fix curse of dimensionality at large N.")
     args = parser.parse_args()
 
     # Create output directory
@@ -448,16 +450,33 @@ def main():
             print(f"  ⚠️  Skipping {class_name}: only {embeddings.shape[0]} samples (need at least {args.min_samples} for min_samples)")
             continue
 
+        # Check if class is uniform and should be downsampled
+        n_samples = len(embeddings)
+
+        # PCA dimensionality reduction before clustering (fixes curse of dimensionality at large N)
+        # Applied per-class so PCA captures each class's own variance structure.
+        # Original 768d embeddings kept intact for centroid overview UMAP.
+        n_components = args.pca_components
+        if n_components > 0 and n_samples > n_components:
+            t0 = time.time()
+            pca = PCA(n_components=n_components, random_state=42)
+            embeddings_for_clustering = normalize(
+                pca.fit_transform(normalize(embeddings, norm='l2')), norm='l2'
+            )
+            print(f"  [PCA] 768d → {n_components}d ({pca.explained_variance_ratio_.sum()*100:.1f}% variance retained) in {time.time()-t0:.2f}s")
+        else:
+            embeddings_for_clustering = embeddings
+            if n_components > 0:
+                print(f"  [PCA] skipped — n_samples ({n_samples}) <= pca_components ({n_components})")
+
         # Auto-tune eps if requested
         if args.auto_tune:
-            optimal_eps = auto_tune_eps(embeddings, args.min_samples, percentile=args.auto_tune_percentile)
+            optimal_eps = auto_tune_eps(embeddings_for_clustering, args.min_samples, percentile=args.auto_tune_percentile)
             print(f"  Auto-tuned eps: {optimal_eps:.4f} (percentile={args.auto_tune_percentile})")
             eps_to_use = optimal_eps
         else:
             eps_to_use = args.eps
 
-        # Check if class is uniform and should be downsampled
-        n_samples = len(embeddings)
         is_uniform = (n_samples > args.uniform_min_samples and
                       eps_to_use < args.uniform_eps_threshold)
 
@@ -468,13 +487,13 @@ def main():
             stride = max(1, n_samples // args.uniform_downsample_target)
             subsample_indices = np.arange(0, n_samples, stride)[:args.uniform_downsample_target]
 
-            embeddings_to_cluster = embeddings[subsample_indices]
+            embeddings_to_cluster = embeddings_for_clustering[subsample_indices]
             image_files_to_cluster = [image_files[i] for i in subsample_indices]
             n_samples_to_cluster = len(embeddings_to_cluster)
 
             print(f"  ✓ Using {n_samples_to_cluster} samples for clustering (stride={stride})")
         else:
-            embeddings_to_cluster = embeddings
+            embeddings_to_cluster = embeddings_for_clustering
             image_files_to_cluster = image_files
             n_samples_to_cluster = n_samples
 

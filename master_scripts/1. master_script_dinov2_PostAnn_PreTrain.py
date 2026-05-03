@@ -236,6 +236,8 @@ def main():
         min_pts             = int(_prompt_text("Min points per cluster", 3))
         umap_min_dist       = float(_prompt_text("UMAP min_dist (lower=tighter packing)", 0.05))
         max_cluster_samples = int(_prompt_text("Max sample images saved per cluster", 20))
+        # PCA reduces 768d embeddings → Nd before clustering to fix curse of dimensionality (esp. large classes 10K+ samples)
+        pca_components      = int(_prompt_text("PCA dims before clustering (0=disabled, 128=default; reduces 768d→Nd)", 128))
 
         # Uniform class handling
         uniform_class_eps_threshold     = float(_prompt_text("Uniform class eps threshold", 0.1))
@@ -245,6 +247,7 @@ def main():
         min_pts             = 3
         umap_min_dist       = 0.05
         max_cluster_samples = 20
+        pca_components      = 128
         uniform_class_eps_threshold     = 0.1
         uniform_class_downsample_target = 4000
         uniform_class_min_samples       = 12000
@@ -377,7 +380,8 @@ def main():
         "--save_montage",
         "--uniform_eps_threshold", str(uniform_class_eps_threshold),
         "--uniform_downsample_target", str(uniform_class_downsample_target),
-        "--uniform_min_samples", str(uniform_class_min_samples)
+        "--uniform_min_samples", str(uniform_class_min_samples),
+        "--pca_components", str(pca_components)
     ]
     if auto_tune:
         cluster_args.append("--auto_tune")
