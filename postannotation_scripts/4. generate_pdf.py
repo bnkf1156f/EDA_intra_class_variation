@@ -13,8 +13,7 @@ Usage:
         --imgs_path path/to/images \
         --label_path path/to/labels \
         --classes_txt path/to/classes.txt \
-        --auto_tune --auto_tune_percentile 95 \
-        --cross_class
+        --auto_tune --auto_tune_percentile 95
 
 Output:
     - Page 1: Dataset overview table + pipeline config table + class summary table

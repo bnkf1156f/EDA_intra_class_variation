@@ -110,12 +110,15 @@ Use after annotation to understand intra-class variation — are your classes ho
 |-----------|---------|-------------|
 | `batch_size` | 64 | DINOv2 batch size |
 | `auto_tune` | True | Auto-calculate DBSCAN epsilon per class |
-| `auto_tune_percentile` | 95 | k-NN percentile (90=tight, 95=balanced, 98=loose) |
+| `auto_tune_percentile` | 90 | k-NN percentile (90=tight, 95=balanced, 98=loose) |
 | `epsilon` | 0.15 | Manual eps fallback (only if auto-tune off) |
 | `save_class_scatter` | False | Per-class UMAP scatter plots (slow — runs UMAP per class) |
 | `min_pts` | 3 | Min points per cluster |
 | `umap_min_dist` | 0.05 | UMAP min_dist |
-| `max_cluster_samples` | 20 | Max sample images per cluster |
+| `max_cluster_samples` | 20 | Max sample images per cluster (overrides Script 3's own default of 5) |
+| `pca_components` | 128 | PCA dims before clustering (0=disabled; reduces 768d→Nd before DBSCAN) |
+| `uniform_downsample_target` | 4000 | Downsample target for uniform classes (overrides Script 3's default of 5000) |
+| `uniform_min_samples` | 12000 | Trigger downsampling only if class exceeds this (overrides Script 3's default of 10000) |
 | `use_embedding_cache` | True | Skip re-generation if embeddings exist |
 | `num_workers` | 4 | Crop extraction threads (behind "Change defaults?" gate) |
 
@@ -234,16 +237,66 @@ python "postannotation_scripts/3. clustering_of_classes_embeddings.py" \
 | `--max_samples` | 5 | Sample images per cluster (outliers: all saved) |
 | `--save_class_scatter` | False | Per-class UMAP scatter plots (slow — runs UMAP per class) |
 | `--save_montage` | False | Generate image grid montages |
+| `--pca_components` | 128 | PCA dims before DBSCAN (0=disabled; reduces 768d→Nd, improves large-class clustering) |
 | `--uniform_eps_threshold` | 0.10 | Below this eps = class treated as uniform |
 | `--uniform_downsample_target` | 5000 | Downsample target for uniform classes |
 | `--uniform_min_samples` | 10000 | Only downsample if class has more than this |
 
-**GPU backend**: Script 3 auto-detects cuML at startup. If cuML is installed and a CUDA device is available, uses GPU-accelerated DBSCAN + kNN + UMAP. Falls back to sklearn/umap-learn (CPU) silently otherwise — no config needed. Install cuML via conda in WSL2/Linux (see RAPIDS docs for CUDA-version-matched install command).
+**GPU backend**: Script 3 auto-detects cuML at startup. If cuML is installed and a CUDA device is available, uses GPU-accelerated DBSCAN + kNN + UMAP. Falls back to sklearn/umap-learn (CPU) silently otherwise — no config needed.
+
+**Installing cuML (WSL2 / Linux server):**
+
+RAPIDS doesn't ship pip wheels. Requires mamba (conda's fast solver) — plain conda hangs forever on RAPIDS due to SAT solver limitations (500+ packages, 3 channels).
+
+**Option A — miniforge (recommended for personal machines, no root needed):**
+```bash
+# Install miniforge to $HOME — ships mamba built-in, no root needed
+wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+bash Miniforge3-Linux-x86_64.sh -b -p $HOME/miniforge3
+$HOME/miniforge3/bin/conda init bash
+# reopen shell — mamba now available directly
+```
+
+**Option B — install mamba into existing anaconda/conda (company machines where you can't change base install):**
+```bash
+conda install -c conda-forge mamba -y   # one-time, into base env
+```
+
+**Create env + install (same for both options):**
+```bash
+# Create fresh env with cuML (CUDA 12.8)
+mamba create -n new_eda_tool -c rapidsai -c conda-forge -c nvidia \
+    cuml=25.* python=3.11 cuda-version=12.8 -y
+
+# Activate
+eval "$(mamba shell hook --shell bash)"   # if shell not initialized yet
+mamba activate new_eda_tool              # or: conda activate new_eda_tool
+
+# Install PyTorch — use pinned version, pip path only (conda pytorch channel has no cuda=12.8)
+pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+    --index-url https://download.pytorch.org/whl/cu128
+
+# Install pipeline deps
+pip install -r requirements.txt
+```
+
+**Verify:**
+```bash
+python -c "import cuml; from cuml.cluster import DBSCAN; print(cuml.__version__)"
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+```
+
+**Key lessons learned:**
+- `mamba create` not `conda create` — conda solver deadlocks on RAPIDS
+- miniforge = mamba built-in; plain anaconda = need `conda install mamba` first
+- PyTorch must be pinned (eg., `torch==2.7.1`) — unpinned pulls incompatible nvidia-* pip packages that conflict with conda's CUDA libs — remember to ensure that torch version is compatible with cuda
+- Do NOT `pip install nvidia-cudnn-cu12` separately — torch's pinned install handles it; wrong version = `libcudnn.so` import error
+- conda pytorch channel has no `pytorch-cuda=12.8` yet — pip is the only path
 
 Output:
 ```
 clustering_results/
-├── {class}_clusters.png
+├── {class}_clusters.png   (only if --save_class_scatter)
 ├── {class}_montage.png
 ├── {class}_samples/
 │   ├── cluster_0/
