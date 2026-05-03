@@ -213,8 +213,9 @@ def create_cluster_montage(image_files, cluster_labels, class_name, output_path,
 
     plt.suptitle(f'Cluster Samples: {class_name}', fontsize=16, fontweight='bold')
     plt.tight_layout()
-    plt.savefig(output_path, dpi=200, bbox_inches='tight')
-    print(f"  - Saved montage: {output_path}")
+    jpg_path = Path(output_path).with_suffix('.jpg')
+    plt.savefig(jpg_path, dpi=150, bbox_inches='tight', format='jpeg', pil_kwargs={'quality': 85})
+    print(f"  - Saved montage: {jpg_path}")
     plt.close()
 
 def visualize_intra_class(X_2d, cluster_labels, class_name, output_path):
@@ -541,7 +542,7 @@ def main():
 
         # Create montage if requested
         if args.save_montage:
-            montage_path = output_dir / f"{class_name}_montage.png"
+            montage_path = output_dir / f"{class_name}_montage.jpg"
             montage_class_name = f"{class_name} (Uniform - analyzed {n_samples_to_cluster}/{n_samples} samples)" if is_uniform else class_name
             create_cluster_montage(image_files_to_cluster, cluster_labels, montage_class_name, montage_path, args.max_samples)
 

@@ -17,6 +17,28 @@ Turn the EDA pipeline into a Slack-triggered service:
 
 ---
 
+## PDF Insights & Recommendations Section (last page of PDF)
+
+Auto-generated from `cluster_statistics.csv`. Summary table format (class | issue | recommendation).
+
+**Rules confirmed:**
+- `outlier_rate > 8%` → "High outlier rate — review for annotation errors"
+- `n_clusters > 15` → "High intra-class variation — verify class definition is consistent"
+- `n_clusters <= 2 AND n_samples > 1000` → "Visually homogeneous — OK"
+- Severe class imbalance (min/max sample ratio) → "Risk of model bias — consider resampling or loss weighting"
+- Uniform + high outliers combo (homogeneous class BUT >8% outliers) → "Possible systematic annotation noise"
+- `n_samples < 50` → "Insufficient data — interpret clustering results cautiously"
+- High auto-tuned eps (>0.5) → "Embeddings very spread — class may contain fundamentally different visual concepts"
+- Downsampled classes → note in table
+
+**Not included (needs model output):**
+- mAP before/after outlier removal
+- Cross-class embedding overlap
+
+**Implementation:** goes in `4. generate_pdf.py` as final PDF page, reads `cluster_statistics.csv` directly.
+
+---
+
 ## Dashboard instead of PDF
 - can be viewed over a dashboard or something with images saved / persisted under assets and if that saved us the hassle of generating documents
 - https://diffprog.slack.com/archives/C06Q7DXJDUJ/p1777549467871949
