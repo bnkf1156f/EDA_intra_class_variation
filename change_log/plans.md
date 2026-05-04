@@ -15,8 +15,6 @@ Turn the EDA pipeline into a Slack-triggered service:
 - Need to clarify: stream progress vs just "done + PDF", and TS4 integration angle
 - S3 bucket -> pdf 
 
----
-
 ## PDF Insights & Recommendations Section (last page of PDF)
 
 Auto-generated from `cluster_statistics.csv`. Summary table format (class | issue | recommendation).
@@ -36,8 +34,6 @@ Auto-generated from `cluster_statistics.csv`. Summary table format (class | issu
 - Cross-class embedding overlap
 
 **Implementation:** goes in `4. generate_pdf.py` as final PDF page, reads `cluster_statistics.csv` directly.
-
----
 
 ## Dashboard instead of PDF
 - can be viewed over a dashboard or something with images saved / persisted under assets and if that saved us the hassle of generating documents

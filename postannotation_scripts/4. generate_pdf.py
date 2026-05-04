@@ -249,13 +249,15 @@ def load_cluster_statistics(clustering_dir):
 
 
 def find_montage_image(clustering_dir, class_name):
-    """Find the montage PNG for a given class name."""
+    """Find the montage image (JPG or PNG) for a given class name."""
     clustering_path = Path(clustering_dir)
-    montage_path = clustering_path / f"{class_name}_montage.png"
-    if montage_path.exists():
-        return str(montage_path)
-    for file in clustering_path.glob("*_montage.png"):
-        if file.stem.lower().replace('_montage', '') == class_name.lower():
+    for ext in ('.jpg', '.png'):
+        montage_path = clustering_path / f"{class_name}_montage{ext}"
+        if montage_path.exists():
+            return str(montage_path)
+    for file in clustering_path.glob("*_montage.*"):
+        if file.suffix.lower() in ('.jpg', '.png') and \
+                file.stem.lower().replace('_montage', '') == class_name.lower():
             return str(file)
     return None
 
