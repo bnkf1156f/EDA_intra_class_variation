@@ -248,18 +248,45 @@ def load_cluster_statistics(clustering_dir):
     return pd.read_csv(csv_path)
 
 
-def find_montage_image(clustering_dir, class_name):
-    """Find the montage image (JPG or PNG) for a given class name."""
+def find_montage_images(clustering_dir, class_name):
+    """Find all montage image parts (JPG or PNG) for a given class, sorted by part number.
+
+    Returns a list of paths. Single-file montages return a one-element list.
+    Multi-part montages (e.g. *_part1.jpg, *_part2.jpg) return all parts in order.
+    Returns empty list if nothing found.
+    """
     clustering_path = Path(clustering_dir)
+
+    # Check for multi-part files first (e.g. black_bin_montage_part1.jpg)
+    parts = []
+    for ext in ('.jpg', '.png'):
+        pattern = f"{class_name}_montage_part*{ext}"
+        found = sorted(clustering_path.glob(pattern),
+                       key=lambda p: int(''.join(filter(str.isdigit, p.stem.split('_part')[-1])) or '0'))
+        if found:
+            parts.extend(str(p) for p in found)
+    if parts:
+        return parts
+
+    # Single file
     for ext in ('.jpg', '.png'):
         montage_path = clustering_path / f"{class_name}_montage{ext}"
         if montage_path.exists():
-            return str(montage_path)
-    for file in clustering_path.glob("*_montage.*"):
+            return [str(montage_path)]
+
+    # Fuzzy fallback
+    for file in sorted(clustering_path.glob("*_montage.*")):
         if file.suffix.lower() in ('.jpg', '.png') and \
                 file.stem.lower().replace('_montage', '') == class_name.lower():
-            return str(file)
-    return None
+            return [str(file)]
+
+    return []
+
+
+def find_montage_image(clustering_dir, class_name):
+    """Legacy single-path wrapper around find_montage_images."""
+    results = find_montage_images(clustering_dir, class_name)
+    return results[0] if results else None
 
 
 def create_placeholder_image(class_name, output_path):
@@ -585,15 +612,16 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
     for class_info in stats['class_data']:
         class_name = class_info['name']
 
-        montage_path = find_montage_image(clustering_dir, class_name)
-        if montage_path is None:
+        montage_paths = find_montage_images(clustering_dir, class_name)
+        if not montage_paths:
             print(f"   ⚠️  WARNING: Montage missing for class '{class_name}' - creating placeholder")
             missing_montages.append(class_name)
             placeholder_path = temp_dir / f"{class_name}_placeholder.png"
             create_placeholder_image(class_name, placeholder_path)
-            montage_path = str(placeholder_path)
+            montage_paths = [str(placeholder_path)]
         else:
-            print(f"   ✅ Found montage for class '{class_name}'")
+            label = f"({len(montage_paths)} parts)" if len(montage_paths) > 1 else ""
+            print(f"   ✅ Found montage for class '{class_name}' {label}".strip())
 
         cluster_info = None
         if cluster_df is not None:
@@ -609,53 +637,68 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
             from PIL import Image as PILImage
             PILImage.MAX_IMAGE_PIXELS = None
 
-            img_pil = PILImage.open(montage_path)
-            img_width, img_height = img_pil.size
-
             max_width = 7 * inch
             max_page_height = 8.5 * inch
-            width_scale = max_width / img_width
-            scaled_height = img_height * width_scale
 
-            if scaled_height <= max_page_height:
-                compressed_path = temp_dir / f"{class_name}_compressed.jpg"
-                img_pil.convert('RGB').save(compressed_path, 'JPEG', quality=pdf_quality, optimize=True)
-                img_pil.close()
-                story.append(Image(str(compressed_path), width=max_width, height=scaled_height))
-            else:
-                if cluster_info is not None:
-                    num_cluster_rows = int(cluster_info['n_clusters']) + (1 if cluster_info['n_outliers'] > 0 else 0)
+            for part_idx, montage_path in enumerate(montage_paths):
+                img_pil = PILImage.open(montage_path)
+                img_width, img_height = img_pil.size
+                width_scale = max_width / img_width
+                scaled_height = img_height * width_scale
+
+                if part_idx > 0:
+                    story.append(Spacer(1, 0.05*inch))
+                    story.append(Paragraph(
+                        f"<i>(Part {part_idx + 1} of {len(montage_paths)})</i>",
+                        ParagraphStyle('PartLabel', parent=normal_style,
+                                       fontSize=9, alignment=TA_CENTER,
+                                       textColor=colors.grey)))
+                    story.append(Spacer(1, 0.05*inch))
+
+                if scaled_height <= max_page_height:
+                    compressed_path = temp_dir / f"{class_name}_part{part_idx}_compressed.jpg"
+                    img_pil.convert('RGB').save(compressed_path, 'JPEG', quality=pdf_quality, optimize=True)
+                    img_pil.close()
+                    story.append(Image(str(compressed_path), width=max_width, height=scaled_height))
                 else:
-                    num_cluster_rows = max(1, int(img_height / 600))
+                    if cluster_info is not None:
+                        num_cluster_rows = int(cluster_info['n_clusters']) + (1 if cluster_info['n_outliers'] > 0 else 0)
+                        # Distribute rows evenly across parts
+                        rows_this_part = max(1, num_cluster_rows // len(montage_paths))
+                    else:
+                        rows_this_part = max(1, int(img_height / 600))
 
-                row_height_px = img_height / num_cluster_rows
-                row_height_scaled = row_height_px * width_scale
-                rows_per_page = max(1, int(max_page_height / row_height_scaled))
-                num_chunks = (num_cluster_rows + rows_per_page - 1) // rows_per_page
+                    row_height_px = img_height / rows_this_part
+                    row_height_scaled = row_height_px * width_scale
+                    rows_per_page = max(1, int(max_page_height / row_height_scaled))
+                    num_chunks = (rows_this_part + rows_per_page - 1) // rows_per_page
 
-                for chunk_idx in range(num_chunks):
-                    start_row = chunk_idx * rows_per_page
-                    end_row = min((chunk_idx + 1) * rows_per_page, num_cluster_rows)
-                    top = int(start_row * row_height_px)
-                    bottom = int(end_row * row_height_px)
-                    chunk = img_pil.crop((0, top, img_width, bottom))
-                    chunk_path = temp_dir / f"{class_name}_chunk_{chunk_idx}.jpg"
-                    chunk.convert('RGB').save(chunk_path, 'JPEG', quality=pdf_quality, optimize=True)
-                    chunk_height = (bottom - top) * width_scale
+                    for chunk_idx in range(num_chunks):
+                        start_row = chunk_idx * rows_per_page
+                        end_row = min((chunk_idx + 1) * rows_per_page, rows_this_part)
+                        top = int(start_row * row_height_px)
+                        bottom = int(end_row * row_height_px)
+                        chunk = img_pil.crop((0, top, img_width, bottom))
+                        chunk_path = temp_dir / f"{class_name}_part{part_idx}_chunk_{chunk_idx}.jpg"
+                        chunk.convert('RGB').save(chunk_path, 'JPEG', quality=pdf_quality, optimize=True)
+                        chunk_height = (bottom - top) * width_scale
 
-                    if chunk_idx > 0:
-                        story.append(Spacer(1, 0.05*inch))
-                        story.append(Paragraph(
-                            f"<i>(Continuation — Clusters {start_row} to {end_row-1})</i>",
-                            ParagraphStyle('Continuation', parent=normal_style,
-                                           fontSize=9, alignment=TA_CENTER,
-                                           textColor=colors.grey)))
-                        story.append(Spacer(1, 0.05*inch))
+                        if chunk_idx > 0:
+                            story.append(Spacer(1, 0.05*inch))
+                            story.append(Paragraph(
+                                f"<i>(Continuation — Clusters {start_row} to {end_row-1})</i>",
+                                ParagraphStyle('Continuation', parent=normal_style,
+                                               fontSize=9, alignment=TA_CENTER,
+                                               textColor=colors.grey)))
+                            story.append(Spacer(1, 0.05*inch))
 
-                    story.append(Image(str(chunk_path), width=max_width, height=chunk_height))
-                    if chunk_idx < num_chunks - 1:
-                        story.append(PageBreak())
-                img_pil.close()
+                        story.append(Image(str(chunk_path), width=max_width, height=chunk_height))
+                        if chunk_idx < num_chunks - 1:
+                            story.append(PageBreak())
+                    img_pil.close()
+
+                if part_idx < len(montage_paths) - 1:
+                    story.append(PageBreak())
 
         except Exception as e:
             import traceback

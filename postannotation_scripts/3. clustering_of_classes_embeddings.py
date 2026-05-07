@@ -166,57 +166,76 @@ def save_cluster_samples(image_files, cluster_labels, class_name, output_dir, ma
         print(f"    - {folder_name}: saved {n_samples}/{len(cluster_indices)} samples")
 
 def create_cluster_montage(image_files, cluster_labels, class_name, output_path, max_per_cluster):
-    """Create a montage showing sample images from each cluster."""
+    """Create a montage showing sample images from each cluster.
+
+    Splits into multiple part files when cluster count would exceed JPEG's
+    65500px height limit (libjpeg hard constraint).
+    """
     unique_clusters = sorted(set(cluster_labels))
-    n_clusters = len(unique_clusters)
-
     n_cols = max_per_cluster
-    n_rows = n_clusters
+    # At 150 DPI, each row is 3in * 150 = 450px. Stay under 65000px → max 144 rows.
+    MAX_ROWS_PER_PART = max(1, 65000 // int(3 * 150))
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 3, n_rows * 3))
+    base_path = Path(output_path).with_suffix('.jpg')
+    parts = [unique_clusters[i:i + MAX_ROWS_PER_PART]
+             for i in range(0, len(unique_clusters), MAX_ROWS_PER_PART)]
 
-    if n_rows == 1 and n_cols == 1:
-        axes = np.array([[axes]])
-    elif n_rows == 1:
-        axes = axes.reshape(1, -1)
-    elif n_cols == 1:
-        axes = axes.reshape(-1, 1)
+    saved_paths = []
+    for part_idx, cluster_batch in enumerate(parts):
+        n_rows = len(cluster_batch)
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 3, n_rows * 3))
 
-    for row_idx, cluster_id in enumerate(unique_clusters):
-        cluster_mask = cluster_labels == cluster_id
-        cluster_indices = np.where(cluster_mask)[0]
+        if n_rows == 1 and n_cols == 1:
+            axes = np.array([[axes]])
+        elif n_rows == 1:
+            axes = axes.reshape(1, -1)
+        elif n_cols == 1:
+            axes = axes.reshape(-1, 1)
 
-        n_samples = min(max_per_cluster, len(cluster_indices))
-        sampled_indices = np.random.choice(cluster_indices, n_samples, replace=False)
+        for row_idx, cluster_id in enumerate(cluster_batch):
+            cluster_mask = cluster_labels == cluster_id
+            cluster_indices = np.where(cluster_mask)[0]
 
-        if cluster_id == -1:
-            row_title = f"Outliers (n={len(cluster_indices)})"
-            color = 'red'
+            n_samples = min(max_per_cluster, len(cluster_indices))
+            sampled_indices = np.random.choice(cluster_indices, n_samples, replace=False)
+
+            if cluster_id == -1:
+                row_title = f"Outliers (n={len(cluster_indices)})"
+                color = 'red'
+            else:
+                row_title = f"Cluster {cluster_id} (n={len(cluster_indices)})"
+                color = 'blue'
+
+            for col_idx in range(n_cols):
+                ax = axes[row_idx, col_idx]
+                if col_idx < len(sampled_indices):
+                    img_path = image_files[sampled_indices[col_idx]]
+                    img = Image.open(img_path).convert("RGB")
+                    img.thumbnail((600, 600), Image.LANCZOS)
+                    ax.imshow(np.asarray(img))
+                    ax.set_title(img_path.name, fontsize=8)
+                ax.axis('off')
+
+            axes[row_idx, 0].text(-0.1, 0.5, row_title,
+                                 transform=axes[row_idx, 0].transAxes,
+                                 fontsize=12, fontweight='bold', color=color,
+                                 rotation=90, va='center', ha='right')
+
+        title_suffix = f" (part {part_idx + 1}/{len(parts)})" if len(parts) > 1 else ""
+        plt.suptitle(f'Cluster Samples: {class_name}{title_suffix}', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+
+        if len(parts) == 1:
+            jpg_path = base_path
         else:
-            row_title = f"Cluster {cluster_id} (n={len(cluster_indices)})"
-            color = 'blue'
+            jpg_path = base_path.with_name(base_path.stem + f"_part{part_idx + 1}.jpg")
 
-        for col_idx in range(n_cols):
-            ax = axes[row_idx, col_idx]
-            if col_idx < len(sampled_indices):
-                img_path = image_files[sampled_indices[col_idx]]
-                img = Image.open(img_path).convert("RGB")
-                img.thumbnail((600, 600), Image.LANCZOS)
-                ax.imshow(np.asarray(img))
-                ax.set_title(img_path.name, fontsize=8)
-            ax.axis('off')
+        plt.savefig(jpg_path, dpi=150, bbox_inches='tight', format='jpeg', pil_kwargs={'quality': 85})
+        print(f"  - Saved montage: {jpg_path}")
+        plt.close()
+        saved_paths.append(jpg_path)
 
-        axes[row_idx, 0].text(-0.1, 0.5, row_title,
-                             transform=axes[row_idx, 0].transAxes,
-                             fontsize=12, fontweight='bold', color=color,
-                             rotation=90, va='center', ha='right')
-
-    plt.suptitle(f'Cluster Samples: {class_name}', fontsize=16, fontweight='bold')
-    plt.tight_layout()
-    jpg_path = Path(output_path).with_suffix('.jpg')
-    plt.savefig(jpg_path, dpi=150, bbox_inches='tight', format='jpeg', pil_kwargs={'quality': 85})
-    print(f"  - Saved montage: {jpg_path}")
-    plt.close()
+    return saved_paths
 
 def visualize_intra_class(X_2d, cluster_labels, class_name, output_path):
     """Visualize clusters within a single class."""
