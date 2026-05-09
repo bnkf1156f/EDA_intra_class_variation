@@ -21,7 +21,7 @@ if "%choice%"=="1" (
     echo.
     echo   Launching Pre-Annotation pipeline...
     echo.
-    python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"
+    python "master_scripts/1. master_script_dinov2_PreAnn"
 ) else if "%choice%"=="2" (
     echo.
     echo   Launching Post-Annotation and Pre-Training pipeline...
