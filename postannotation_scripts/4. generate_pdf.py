@@ -359,9 +359,269 @@ def _table_style_header(header_color='#1f77b4'):
     ])
 
 
+def _build_contrastive_chart(stats, contrastive_groups, temp_dir):
+    """
+    Build grouped horizontal bar chart when contrastive_groups provided.
+    contrastive_groups: dict[group_name -> list[class_name]]
+    Returns path to saved chart PNG, or None on failure.
+    """
+    import matplotlib.pyplot as plt
+
+    ann_by_class = {d['name']: d['annotations'] for d in stats['class_data']}
+
+    # Build ordered list of (group_name, [class_names]) — ungrouped classes appended last
+    grouped_class_names = {cls for classes in contrastive_groups.values() for cls in classes}
+    ungrouped = [d['name'] for d in stats['class_data'] if d['name'] not in grouped_class_names]
+
+    groups = list(contrastive_groups.items())
+    for cls in ungrouped:
+        groups.append((cls, [cls]))
+
+    palette = ['#3a7fc1', '#d95f49', '#4caa6b', '#e8a838', '#9b59b6', '#1abc9c']
+
+    # Figure height: one row per group entry, min 4
+    fig_h = max(4, len(groups) * 0.55 + 1.5)
+    fig, ax = plt.subplots(figsize=(10, fig_h))
+
+    y_positions = []
+    y_labels = []
+    bar_height = 0.35
+    y = 0
+
+    for group_name, class_list in groups:
+        n = len(class_list)
+        offsets = [(i - (n - 1) / 2) * bar_height for i in range(n)]
+        for cls_idx, (cls_name, offset) in enumerate(zip(class_list, offsets)):
+            count = ann_by_class.get(cls_name, 0)
+            color = palette[cls_idx % len(palette)]
+            bar = ax.barh(y + offset, count, height=bar_height * 0.9,
+                          color=color, edgecolor='white', linewidth=0.4,
+                          label=cls_name if group_name != cls_name else None)
+            ax.text(count + max(ann_by_class.values()) * 0.005, y + offset,
+                    str(count), va='center', ha='left', fontsize=7.5)
+        y_positions.append(y)
+        y_labels.append(group_name)
+        y += 1
+
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(y_labels, fontsize=9)
+    ax.set_xlabel('Annotation Count', fontsize=10)
+    ax.set_title('Annotation Distribution by Class Group', fontsize=12, fontweight='bold')
+    ax.xaxis.grid(True, linestyle='--', alpha=0.6)
+    ax.set_axisbelow(True)
+    ax.invert_yaxis()
+
+    # Legend: only for groups with multiple classes
+    handles = []
+    for cls_idx, palette_color in enumerate(palette):
+        max_members = max((len(v) for v in contrastive_groups.values()), default=1)
+        if cls_idx < max_members:
+            from matplotlib.patches import Patch
+            handles.append(Patch(facecolor=palette_color,
+                                 label=f'Variant {cls_idx + 1}' if cls_idx > 0 else 'Primary'))
+    if len(handles) > 1:
+        ax.legend(handles=handles, loc='lower right', fontsize=8)
+
+    plt.tight_layout()
+    out_path = temp_dir / "contrastive_distribution.png"
+    plt.savefig(out_path, dpi=100, bbox_inches='tight')
+    plt.close()
+    return out_path
+
+
+def _parse_n_samples(raw):
+    """Parse n_samples field: '4000/15000' → (4000, 15000), '1822' → (1822, 1822)."""
+    s = str(raw)
+    if '/' in s:
+        parts = s.split('/')
+        return int(parts[0].strip()), int(parts[1].strip())
+    v = int(s.strip())
+    return v, v
+
+
+def _parse_outlier_rate(raw):
+    """Parse outlier_rate field: '12.3%' → 12.3."""
+    return float(str(raw).replace('%', '').strip())
+
+
+def _generate_insights_page(cluster_df, stats, story, heading_style, normal_style):
+    """Append an Insights & Recommendations page to story."""
+    if cluster_df is None or cluster_df.empty:
+        return
+
+    story.append(Paragraph("INSIGHTS & RECOMMENDATIONS", heading_style))
+    story.append(Paragraph(
+        "Auto-generated from clustering statistics. Flags are derived from embedding structure — "
+        "use as a starting point for data review, not a definitive verdict.",
+        normal_style))
+    story.append(Spacer(1, 0.15 * inch))
+
+    # --- Compute imbalance across all classes (use total n_samples, not clustered) ---
+    total_counts = []
+    for _, row in cluster_df.iterrows():
+        _, total = _parse_n_samples(row['n_samples'])
+        total_counts.append(total)
+
+    imbalance_ratio = (max(total_counts) / min(total_counts)) if total_counts and min(total_counts) > 0 else None
+
+    RED   = colors.HexColor('#c0392b')
+    ORANGE = colors.HexColor('#d35400')
+    GREEN = colors.HexColor('#27ae60')
+    BLUE  = colors.HexColor('#2980b9')
+    GREY  = colors.HexColor('#555555')
+
+    SEV_COLOR = {'critical': RED, 'warning': ORANGE, 'ok': GREEN, 'info': BLUE}
+    SEV_LABEL = {'critical': '🔴 Critical', 'warning': '🟡 Warning', 'ok': '🟢 OK', 'info': 'ℹ Info'}
+
+    # Build per-class flag rows
+    table_rows = [['Class', 'Severity', 'Flag', 'Recommendation']]
+    any_flags = False
+
+    for _, row in cluster_df.iterrows():
+        cls = str(row['class'])
+        n_clustered, n_total = _parse_n_samples(row['n_samples'])
+        n_clusters   = int(row['n_clusters'])
+        n_outliers   = int(row['n_outliers'])
+        outlier_rate = _parse_outlier_rate(row['outlier_rate'])
+        eps_used     = float(row['eps_used'])
+        downsampled  = str(row.get('downsampled', 'no')).lower() == 'yes'
+
+        flags = []  # list of (severity, flag_text, recommendation_text)
+
+        # Rule 1 & 2 — outlier rate
+        if outlier_rate > 8:
+            flags.append(('critical', 'High outlier rate',
+                          'Review crops for annotation errors, truncated bboxes, or wrong-class labels'))
+        elif outlier_rate > 3:
+            flags.append(('warning', 'Moderate outlier rate',
+                          'Spot-check outlier folder; may be acceptable if class is visually diverse'))
+
+        # Rule 3 & 4 — cluster count
+        if n_clusters > 15:
+            flags.append(('critical', 'High intra-class variation',
+                          'Verify class definition is consistent; consider splitting into sub-classes'))
+        elif n_clusters > 5:
+            flags.append(('warning', 'Moderate cluster count',
+                          'Review cluster montages — may reflect real sub-variants or lighting differences'))
+
+        # Rule 5 — all noise
+        if n_clusters == 0:
+            flags.append(('critical', 'All samples noise',
+                          'DBSCAN found no coherent structure — loosen eps or inspect data quality'))
+
+        # Rule 6 — single cluster + high outliers
+        if n_clusters == 1 and outlier_rate > 8:
+            flags.append(('warning', 'Tight core + scattered noise',
+                          'Possible bimodal class; inspect outlier folder — may be unlabelled variant'))
+
+        # Rule 7 — homogeneous OK
+        if n_clusters <= 2 and n_clustered > 1000 and outlier_rate <= 3:
+            flags.append(('ok', 'Visually homogeneous',
+                          'Class is consistent — good for training'))
+
+        # Rule 8 & 9 — sample count
+        if n_clustered < 50:
+            flags.append(('critical', 'Insufficient data',
+                          'Results unreliable — collect more samples before drawing conclusions'))
+        elif n_clustered < 200:
+            flags.append(('warning', 'Low sample count',
+                          'Model may underfit this class; collect more if possible'))
+
+        # Rule 12 — uniform + high outliers
+        if downsampled and outlier_rate > 8:
+            flags.append(('warning', 'Systematic annotation noise',
+                          'Visually homogeneous but high outliers — likely labelling errors, not diversity'))
+
+        # Rule 13 — eps very high
+        if eps_used > 0.5:
+            flags.append(('warning', 'Embeddings very spread',
+                          'Class may contain fundamentally different visual concepts — review montage'))
+
+        # Rule 14 — eps very tight + many clusters
+        if eps_used < 0.05 and n_clusters > 5:
+            flags.append(('warning', 'Over-fragmented at tight eps',
+                          'Many micro-clusters; may be noise-sensitive — try raising auto_tune_percentile'))
+
+        # Rule 15 — downsampled info
+        if downsampled:
+            flags.append(('info', 'Large class downsampled',
+                          f'Clustering ran on {n_clustered:,} of {n_total:,} samples — results representative'))
+
+        # Rule 16 — many clusters on small class
+        if n_clusters > 3 and n_clustered < 300:
+            flags.append(('warning', 'Over-clustering on small class',
+                          'Too many clusters for sample count — likely noise; raise min_cluster_size'))
+
+        # Rule 17 — zero outliers on large class
+        if outlier_rate == 0.0 and n_clustered > 500:
+            flags.append(('info', 'No outliers detected',
+                          'Either very clean data or eps too loose — verify montage looks homogeneous'))
+
+        if not flags:
+            flags.append(('ok', '✓ No issues', 'Class passed all checks'))
+        else:
+            any_flags = True
+
+        for sev, flag, rec in flags:
+            sev_label = SEV_LABEL[sev]
+            table_rows.append([
+                Paragraph(cls, ParagraphStyle('IC', parent=normal_style, fontSize=8, fontName='Helvetica-Bold')),
+                Paragraph(sev_label, ParagraphStyle('IS', parent=normal_style, fontSize=8)),
+                Paragraph(flag, ParagraphStyle('IF', parent=normal_style, fontSize=8)),
+                Paragraph(rec, ParagraphStyle('IR', parent=normal_style, fontSize=8, leading=11)),
+            ])
+
+    # Rules 10 & 11 — dataset-level imbalance (appended as a special row)
+    if imbalance_ratio is not None:
+        if imbalance_ratio > 10:
+            sev, flag, rec = 'critical', 'Severe class imbalance', \
+                f'Max/min ratio {imbalance_ratio:.1f}× — risk of model bias; consider oversampling or weighted loss'
+        elif imbalance_ratio > 3:
+            sev, flag, rec = 'warning', 'Moderate class imbalance', \
+                f'Max/min ratio {imbalance_ratio:.1f}× — monitor per-class recall; minority class may drop'
+        else:
+            sev, flag, rec = 'ok', 'Dataset balanced', \
+                f'Max/min ratio {imbalance_ratio:.1f}× — no imbalance concern'
+
+        table_rows.append([
+            Paragraph('(all classes)', ParagraphStyle('IC', parent=normal_style, fontSize=8, fontName='Helvetica-Bold')),
+            Paragraph(SEV_LABEL[sev], ParagraphStyle('IS', parent=normal_style, fontSize=8)),
+            Paragraph(flag, ParagraphStyle('IF', parent=normal_style, fontSize=8)),
+            Paragraph(rec, ParagraphStyle('IR', parent=normal_style, fontSize=8, leading=11)),
+        ])
+
+    col_widths = [1.3*inch, 0.85*inch, 1.6*inch, 3.75*inch]
+    tbl = Table(table_rows, colWidths=col_widths, repeatRows=1)
+    ts = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
+        ('TOPPADDING', (0, 0), (-1, 0), 7),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cccccc')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 1), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+    ])
+    tbl.setStyle(ts)
+    story.append(tbl)
+
+    if not any_flags:
+        story.append(Spacer(1, 0.15*inch))
+        story.append(Paragraph(
+            "✅ All classes passed all checks. Dataset looks clean.",
+            ParagraphStyle('GoodNews', parent=normal_style, fontSize=11,
+                           textColor=GREEN, fontName='Helvetica-Bold')))
+
+
 def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
               imgs_path=None, label_path=None, classes_txt=None,
-              auto_tune=False, auto_tune_percentile=95, epsilon=0.15):
+              auto_tune=False, auto_tune_percentile=95, epsilon=0.15,
+              contrastive_groups=None):
     """Build the complete PDF report."""
     print("\n" + "="*70)
     print("PDF REPORT GENERATION")
@@ -520,37 +780,42 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
     # --- Section: Annotation Distribution Bar Chart ---
     if stats['class_data']:
         import matplotlib.pyplot as plt
-        bar_chart_path = temp_dir / "annotation_distribution.png"
-        class_names_bar = [d['name'] for d in stats['class_data']]
-        ann_counts = [d['annotations'] for d in stats['class_data']]
-
-        fig_w = max(10, len(class_names_bar) * 0.35)
-        fig, ax = plt.subplots(figsize=(fig_w, 4.5))
-        bars = ax.bar(range(len(class_names_bar)), ann_counts, color='#3a7fc1', edgecolor='#2c5f8a', linewidth=0.5)
-
-        for bar, count in zip(bars, ann_counts):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(ann_counts) * 0.005,
-                    str(count), ha='center', va='bottom', fontsize=7, rotation=0)
-
-        ax.set_xticks(range(len(class_names_bar)))
-        ax.set_xticklabels(class_names_bar, rotation=45, ha='right', fontsize=8)
-        ax.set_ylabel('Annotation Count', fontsize=10)
-        ax.set_xlabel('Class', fontsize=10)
-        ax.set_title('Annotation Distribution per Class', fontsize=12, fontweight='bold')
-        ax.yaxis.grid(True, linestyle='--', alpha=0.7)
-        ax.set_axisbelow(True)
-        plt.tight_layout()
-        plt.savefig(bar_chart_path, dpi=100, bbox_inches='tight')
-        plt.close()
-
         from PIL import Image as PILImage
-        img_bar = PILImage.open(bar_chart_path)
-        bw, bh = img_bar.size
-        img_bar.close()
-        max_w = 7 * inch
-        bar_scaled_h = bh * (max_w / bw)
-        story.append(Image(str(bar_chart_path), width=max_w, height=bar_scaled_h))
-        story.append(Spacer(1, 0.2*inch))
+
+        if contrastive_groups:
+            bar_chart_path = _build_contrastive_chart(stats, contrastive_groups, temp_dir)
+        else:
+            bar_chart_path = temp_dir / "annotation_distribution.png"
+            class_names_bar = [d['name'] for d in stats['class_data']]
+            ann_counts = [d['annotations'] for d in stats['class_data']]
+
+            fig_w = max(10, len(class_names_bar) * 0.35)
+            fig, ax = plt.subplots(figsize=(fig_w, 4.5))
+            bars = ax.bar(range(len(class_names_bar)), ann_counts, color='#3a7fc1', edgecolor='#2c5f8a', linewidth=0.5)
+
+            for bar, count in zip(bars, ann_counts):
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(ann_counts) * 0.005,
+                        str(count), ha='center', va='bottom', fontsize=7, rotation=0)
+
+            ax.set_xticks(range(len(class_names_bar)))
+            ax.set_xticklabels(class_names_bar, rotation=45, ha='right', fontsize=8)
+            ax.set_ylabel('Annotation Count', fontsize=10)
+            ax.set_xlabel('Class', fontsize=10)
+            ax.set_title('Annotation Distribution per Class', fontsize=12, fontweight='bold')
+            ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+            ax.set_axisbelow(True)
+            plt.tight_layout()
+            plt.savefig(bar_chart_path, dpi=100, bbox_inches='tight')
+            plt.close()
+
+        if bar_chart_path and bar_chart_path.exists():
+            img_bar = PILImage.open(bar_chart_path)
+            bw, bh = img_bar.size
+            img_bar.close()
+            max_w = 7 * inch
+            bar_scaled_h = bh * (max_w / bw)
+            story.append(Image(str(bar_chart_path), width=max_w, height=bar_scaled_h))
+            story.append(Spacer(1, 0.2*inch))
 
     # --- Section: Per-Class Summary (replaces imbalance graph) ---
     story.append(Paragraph("CLASS DISTRIBUTION & CLUSTERING SUMMARY", heading_style))
@@ -724,6 +989,13 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
             'Caption', parent=normal_style, fontSize=11, alignment=TA_CENTER)))
         story.append(PageBreak())
 
+    # =========================================================================
+    # LAST PAGE: Insights & Recommendations
+    # =========================================================================
+    if cluster_df is not None:
+        story.append(PageBreak())
+        _generate_insights_page(cluster_df, stats, story, heading_style, normal_style)
+
     # Build PDF
     print("\n📦 Building PDF document...")
     doc.build(story)
@@ -759,8 +1031,18 @@ def main():
     parser.add_argument("--epsilon", type=float, default=0.15)
     parser.add_argument("--pdf_quality", type=int, default=75,
                         help="JPEG compression quality for images in PDF (1-95, default 75)")
+    parser.add_argument("--contrastive_groups_json", default=None,
+                        help="JSON string: {group_name: [class_a, class_b]} for grouped distribution chart")
 
     args = parser.parse_args()
+
+    contrastive_groups = None
+    if args.contrastive_groups_json:
+        import json
+        try:
+            contrastive_groups = json.loads(args.contrastive_groups_json)
+        except Exception as e:
+            print(f"⚠️  Could not parse --contrastive_groups_json: {e} — using plain chart")
 
     build_pdf(
         temp_txt_file=args.temp_txt_file,
@@ -773,6 +1055,7 @@ def main():
         auto_tune=args.auto_tune,
         auto_tune_percentile=args.auto_tune_percentile,
         epsilon=args.epsilon,
+        contrastive_groups=contrastive_groups,
     )
 
 

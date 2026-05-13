@@ -182,7 +182,6 @@ def main():
         "--save_suffix", save_suffix,
         "--auto_tune",
         "--save_montage",
-        "--cross_class"
     ], cool_down_after=False)  # No cooling needed after last step
 
     # Final cleanup

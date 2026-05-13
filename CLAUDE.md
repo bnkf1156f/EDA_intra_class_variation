@@ -20,9 +20,9 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
-| `master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses DINOv2 + PaCMAP) | BEFORE annotation |
-| `master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py` | Automated pre-training pipeline (uses DINOv2) | AFTER annotation |
-| `master_scripts/1. master_script_dinov2_PostTrain.py` | Automated post-training pipeline (uses DINOv2) | AFTER model training |
+| `master_scripts/master_script_dinov2_PreAnn.py` | **Pre-annotation**: Frame quality assessment with PDF report (uses DINOv2 + PaCMAP) | BEFORE annotation |
+| `master_scripts/master_script_dinov2_PostAnn_PreTrain.py` | Automated pre-training pipeline (uses DINOv2) | AFTER annotation |
+| `master_scripts/master_script_dinov2_PostTrain.py` | Automated post-training pipeline (uses DINOv2) | AFTER model training |
 | `postannotation_scripts/1. ann_txt_files_crop_bbox.py` | Pre-training: Extract crops from YOLO annotations | Part of pretrain pipeline |
 | `postannotation_scripts/1. yolo_model_crop_bbox_per_class.py` | Post-training: Extract crops from model detections | Part of posttrain pipeline |
 | `postannotation_scripts/2. save_dinov2_embeddings_per_class.py` | Generate DINOv2 embeddings | Part of both pipelines |
@@ -41,9 +41,9 @@ This is an **intra-class variation analysis pipeline** for object detection data
 ./exec.bat
 
 # Or run directly from project root:
-python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"    # Pre-annotation
-python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
-python "master_scripts/1. master_script_dinov2_PostTrain.py"         # Post-training (not in exec.bat)
+python "master_scripts/master_script_dinov2_PreAnn.py"    # Pre-annotation
+python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
+python "master_scripts/master_script_dinov2_PostTrain.py"         # Post-training (not in exec.bat)
 ```
 
 All master scripts use **interactive questionary prompts** — paths use autocomplete with validation, booleans use Yes/No confirms, and niche parameters are hidden behind a "Change default parameters?" gate.
@@ -52,7 +52,7 @@ All master scripts use **interactive questionary prompts** — paths use autocom
 
 **Pre-annotation workflow** (raw frames → quality PDF):
 ```bash
-python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"
+python "master_scripts/master_script_dinov2_PreAnn.py"
 ```
 
 **Pre-training workflow** (annotated images → clustering):
@@ -84,7 +84,7 @@ python "postannotation_scripts/1. yolo_model_crop_bbox_per_class.py" --model mod
 Input: Raw frames (.png, .jpg, .jpeg)
     |
     v
-[master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py]
+[master_scripts/master_script_dinov2_PreAnn.py]
     - Person detection (YOLOv11-pose)
     - DINOv2 [CLS||avg_patches] embeddings (1536d, adaptive: scene weight + pose weight when persons detected)
     - PCA whitening → PaCMAP dimensionality reduction + HDBSCAN clustering
@@ -157,11 +157,11 @@ Input (annotated images OR video+model)
 
 ## Key Parameters
 
-### Pre-Annotation Script (1. master_script_Dinov2_PaCMAP_PreAnn.py)
+### Pre-Annotation Script (master_script_dinov2_PreAnn.py)
 All parameters are configured via interactive prompts. Clustering params are always asked; niche params only shown if "Change default parameters?" = Yes.
 
 **Always prompted (clustering):**
-- `min_cluster_size`: Smallest group of frames that counts as an activity (default 10)
+- `min_cluster_size`: Smallest group of frames that counts as an activity (default 25)
 - `min_samples`: How strict a frame must match neighbors to join a cluster (default 3, lower=more frames included)
 - `use_embedding_cache`: Cache embeddings to disk for faster re-runs (default True)
 
@@ -213,10 +213,12 @@ All parameters are configured via interactive prompts. Clustering params are alw
 6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine number of rows
 7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 75 for ~80% file size reduction (configurable via `--pdf_quality`)
 8. **PIL Decompression Bomb**: Script 4 disables PIL's `MAX_IMAGE_PIXELS` limit to handle large montages (25+ clusters)
-9. **PDF Page 1 layout**: Dataset overview table → Pipeline config table → Annotation distribution bar chart → Per-class clustering summary table. Annotation issue files detail section rendered if any issues found.
+9. **PDF Page 1 layout**: Dataset overview table → Pipeline config table → Annotation distribution bar chart (or contrastive grouped chart) → Per-class clustering summary table. Annotation issue files detail section rendered if any issues found.
 10. **PDF Page 2+ — centroid overview**: Pages 2+ show `centroid_overview_N.png` plots (one per page). `--cross_class` flag removed; replaced by `--save_class_scatter` for per-class UMAP scatter (off by default).
-11. **PDF args from master script**: Script 4 accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--pdf_quality` — all passed automatically by the pre-training master script.
+11. **PDF args from master script**: Script 4 accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--pdf_quality`, `--contrastive_groups_json` — all passed automatically by the pre-training master script.
 12. **Reuse crops/embeddings**: Master script pre-flight detects existing `.npy` embeddings in cropped folder — offers to skip Steps 1 & 2 and jump straight to clustering. Folder is `shutil.rmtree`-deleted before overwrite (not just warned).
+13. **Contrastive distribution chart**: When `--contrastive_groups_json` is provided (JSON `{group_name: [class_a, class_b]}`), Script 4 replaces the plain vertical annotation bar chart with a grouped horizontal bar chart. One row per group, sub-bars per variant, palette `['#3a7fc1', '#d95f49', ...]`. Ungrouped classes appended as single-item rows. Master script prompts via `questionary.checkbox` — user ticks class names to form groups, auto-names as `"A vs B"` (editable). Backward compatible — no arg = existing plain chart.
+14. **PDF Insights & Recommendations page**: Script 4 appends a final page after montages — color-coded flag table per class (🔴 Critical / 🟡 Warning / 🟢 OK / ℹ Info). 17 rules evaluated: outlier rate thresholds, cluster count, all-noise, tight-core+noise, homogeneous OK, sample count, systematic noise, eps spread, over-fragmentation, over-clustering, zero outliers, class imbalance. Dataset-level imbalance (max/min ratio) added as cross-class row. Classes with no flags get green "✓ No issues". `n_samples` parsed as both plain int and `"clustered/total"` string.
 
 ## File Naming Patterns
 

@@ -20,9 +20,9 @@ exec.bat        # Windows
 
 Or run directly:
 ```bash
-python "master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py"    # pre-annotation
-python "master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py"  # pre-training
-python "master_scripts/1. master_script_dinov2_PostTrain.py"         # post-training (edit config vars at top of script)
+python "master_scripts/master_script_dinov2_PreAnn.py"    # pre-annotation
+python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py"  # pre-training
+python "master_scripts/master_script_dinov2_PostTrain.py"         # post-training (edit config vars at top of script)
 ```
 
 Pre-annotation and pre-training use interactive prompts. Post-training requires editing config variables at the top of the script.
@@ -31,7 +31,7 @@ Pre-annotation and pre-training use interactive prompts. Post-training requires 
 
 ## Pre-Annotation: Frame Quality Assessment
 
-**Script**: `master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py`
+**Script**: `master_scripts/master_script_dinov2_PreAnn.py`
 
 Use this when you have raw frames and want to know if they're worth annotating. Catches: redundant frames, motion blur, bad lighting, missing scenarios.
 
@@ -48,7 +48,7 @@ Use this when you have raw frames and want to know if they're worth annotating. 
 2. "Change default parameters?" — No = sensible defaults, Yes = exposes everything
 3. Clustering params (always asked):
    - `n_components`: PCA dims before HDBSCAN (default: 128)
-   - `min_cluster_size`: Minimum frames per activity group (default: 10)
+   - `min_cluster_size`: Minimum frames per activity group (default: 25)
    - `min_samples`: HDBSCAN core point strictness (default: 3)
 4. Use embedding cache? (Yes = faster re-runs)
 
@@ -57,7 +57,7 @@ Use this when you have raw frames and want to know if they're worth annotating. 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | `n_components` | 128 | Higher = finer activity separation |
-| `min_cluster_size` | 10 | Lower = more small groups detected |
+| `min_cluster_size` | 25 | Lower = more small groups detected |
 | `min_samples` | 3 | Lower = more frames included in clusters |
 | `anisotropy_threshold` | 3.6 | Motion blur cutoff (2.5 strict, 5.0 lenient) |
 | `batch_size` | 64 | DINOv2 batch size |
@@ -88,7 +88,7 @@ preann_results/
 
 ## Pre-Training: Annotated Dataset Analysis
 
-**Script**: `master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py`
+**Script**: `master_scripts/master_script_dinov2_PostAnn_PreTrain.py`
 
 Use after annotation to understand intra-class variation — are your classes homogeneous or do they have distinct sub-groups? Finds outliers and annotation errors.
 
@@ -122,6 +122,15 @@ Use after annotation to understand intra-class variation — are your classes ho
 | `use_embedding_cache` | True | Skip re-generation if embeddings exist |
 | `num_workers` | 4 | Crop extraction threads (behind "Change defaults?" gate) |
 
+**PDF prompts** (after basic setup, when PDF generation is on):
+- "Group contrastive class pairs in distribution chart?" — if Yes, tick class names from a checkbox list to group them into named pairs (e.g., "standing vs sitting"). Grouped classes render as a horizontal grouped bar chart instead of the plain vertical bar chart. Ungrouped classes appear as single-item rows.
+
+**PDF structure**:
+- Page 1: Dataset overview table → Pipeline config table → Annotation distribution bar chart (or contrastive grouped chart) → Per-class clustering summary table (+ annotation issue files detail if any issues found)
+- Pages 2–N: Centroid overview plots (`centroid_overview_N.png`)
+- Remaining pages: Per-class montages (split at cluster row boundaries, never mid-cluster)
+- Last page: Insights & Recommendations — auto-generated color-coded flag table per class (17 rules: outlier rate, cluster count, homogeneity, imbalance, eps spread, etc.)
+
 **Pipeline steps** (run automatically):
 1. `postannotation_scripts/1. ann_txt_files_crop_bbox.py` — crop + validate dataset
 2. `postannotation_scripts/2. save_dinov2_embeddings_per_class.py` — generate embeddings
@@ -132,12 +141,12 @@ Use after annotation to understand intra-class variation — are your classes ho
 
 ## Post-Training: Model Detection Analysis
 
-**Script**: `master_scripts/1. master_script_dinov2_PostTrain.py`
+**Script**: `master_scripts/master_script_dinov2_PostTrain.py`
 
 Use after training to check if model detections are sensible. Not in `./exec.bat` — run directly.
 
 ```bash
-python "master_scripts/1. master_script_dinov2_PostTrain.py"
+python "master_scripts/master_script_dinov2_PostTrain.py"
 ```
 
 Same pipeline as pre-training but Step 1 runs YOLO inference on video instead of reading annotation files.
@@ -324,7 +333,9 @@ python "postannotation_scripts/4. generate_pdf.py" \
     --auto_tune --auto_tune_percentile 95
 ```
 
-PDF structure: Page 1 = dataset overview table → pipeline config table → annotation distribution bar chart → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster).
+| `--contrastive_groups_json` | None | JSON string `{"Group Name": ["class_a", "class_b"]}` — replaces plain bar chart with grouped horizontal bar chart |
+
+PDF structure: Page 1 = dataset overview table → pipeline config table → annotation distribution bar chart (or contrastive grouped chart if `--contrastive_groups_json` provided) → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster). Last page = Insights & Recommendations — color-coded flag table per class (🔴 Critical / 🟡 Warning / 🟢 OK / ℹ Info) generated from 17 rules (outlier rate, cluster count, homogeneity, eps spread, imbalance, etc.).
 
 ### master_scripts/1. interactive_cluster_viewer.py (optional)
 
@@ -365,9 +376,9 @@ python "master_scripts/1. interactive_cluster_viewer.py" \
 
 | Script | When to use |
 |--------|-------------|
-| `master_scripts/1. master_script_Dinov2_PaCMAP_PreAnn.py` | Before annotation — frame quality check |
-| `master_scripts/1. master_script_dinov2_PostAnn_PreTrain.py` | After annotation — intra-class variation |
-| `master_scripts/1. master_script_dinov2_PostTrain.py` | After training — model detection check |
+| `master_scripts/master_script_dinov2_PreAnn.py` | Before annotation — frame quality check |
+| `master_scripts/master_script_dinov2_PostAnn_PreTrain.py` | After annotation — intra-class variation |
+| `master_scripts/master_script_dinov2_PostTrain.py` | After training — model detection check |
 | `postannotation_scripts/1. ann_txt_files_crop_bbox.py` | Manual: crop from YOLO annotations |
 | `postannotation_scripts/1. yolo_model_crop_bbox_per_class.py` | Manual: crop from model detections |
 | `postannotation_scripts/2. save_dinov2_embeddings_per_class.py` | Manual: generate embeddings |

@@ -237,7 +237,7 @@ def main():
         umap_min_dist       = float(_prompt_text("UMAP min_dist (lower=tighter packing)", 0.05))
         max_cluster_samples = int(_prompt_text("Max sample images saved per cluster", 20))
         # PCA reduces 768d embeddings → Nd before clustering to fix curse of dimensionality (esp. large classes 10K+ samples)
-        pca_components      = int(_prompt_text("PCA dims before clustering (0=disabled, 128=default; reduces 768d→Nd)", 128))
+        pca_components      = int(_prompt_text("PCA dims before clustering (0=disabled, 128=balanced; reduces 768d→Nd)", 0))
 
         # Uniform class handling
         uniform_class_eps_threshold     = float(_prompt_text("Uniform class eps threshold", 0.1))
@@ -247,7 +247,7 @@ def main():
         min_pts             = 3
         umap_min_dist       = 0.05
         max_cluster_samples = 20
-        pca_components      = 128
+        pca_components      = 0
         uniform_class_eps_threshold     = 0.1
         uniform_class_downsample_target = 4000
         uniform_class_min_samples       = 12000
@@ -257,6 +257,35 @@ def main():
     pdf_generate = _ask(questionary.confirm("Generate PDF report?", default=True))
     pdf_name     = _prompt_text("Output PDF filename (no extension)", _default_pdf_name) if pdf_generate else _default_pdf_name
     pdf_quality  = int(_prompt_text("PDF image quality (1-95, 75=balanced, 90=high, 50=small file)", 75)) if change_defaults and pdf_generate else 75
+
+    # Contrastive class grouping for distribution chart
+    import json as _json
+    contrastive_groups_json = None
+    if pdf_generate:
+        use_contrastive = _ask(questionary.confirm(
+            "Group contrastive class pairs in distribution chart?", default=False))
+        if use_contrastive:
+            contrastive_groups = {}
+            group_num = 1
+            while True:
+                selected = _ask(questionary.checkbox(
+                    f"Group {group_num}: tick classes to pair together (Enter alone = done)",
+                    choices=class_names,
+                ))
+                if not selected:
+                    break
+                default_name = " vs ".join(selected)
+                group_name = _prompt_text(f"Name for this group", default_name)
+                contrastive_groups[group_name] = selected
+                group_num += 1
+                another = _ask(questionary.confirm("Add another group?", default=False))
+                if not another:
+                    break
+            if contrastive_groups:
+                contrastive_groups_json = _json.dumps(contrastive_groups)
+                print(f"  ✅ {len(contrastive_groups)} group(s) configured")
+            else:
+                print("  ℹ️  No groups — using plain chart")
 
     ## -----------------------------------------------##
     ##   PRE-FLIGHT: CHECK OUTPUT DIRS ARE EMPTY      ##
@@ -409,6 +438,8 @@ def main():
         ]
         if auto_tune:
             pdf_args.append("--auto_tune")
+        if contrastive_groups_json:
+            pdf_args.extend(["--contrastive_groups_json", contrastive_groups_json])
         run_step("postannotation_scripts/4. generate_pdf.py", pdf_args, cool_down_after=False)
 
         # Ask user whether to delete temp file
