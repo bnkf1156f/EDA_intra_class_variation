@@ -359,34 +359,53 @@ def _table_style_header(header_color='#1f77b4'):
     ])
 
 
+def _infer_variant_labels(contrastive_groups):
+    """
+    Derive legend labels from class name suffixes across all groups.
+    Each group has N variants at position 0..N-1. If all groups agree on the
+    suffix token at position i (splitting on '_'), use that token; else 'Variant i+1'.
+    Returns list of label strings, length = max variants across all groups.
+    """
+    max_n = max((len(v) for v in contrastive_groups.values()), default=1)
+    labels = []
+    for i in range(max_n):
+        # collect the last token of class name at position i in each group that has one
+        tokens = []
+        for class_list in contrastive_groups.values():
+            if i < len(class_list):
+                parts = class_list[i].split('_')
+                tokens.append(parts[-1] if parts else class_list[i])
+        unique = set(tokens)
+        if len(unique) == 1:
+            labels.append(tokens[0])
+        else:
+            labels.append(f'Variant {i + 1}')
+    return labels
+
+
 def _build_contrastive_chart(stats, contrastive_groups, temp_dir):
     """
-    Build grouped horizontal bar chart when contrastive_groups provided.
+    Build grouped horizontal bar chart for contrastive groups only (ungrouped classes excluded).
     contrastive_groups: dict[group_name -> list[class_name]]
     Returns path to saved chart PNG, or None on failure.
     """
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
 
     ann_by_class = {d['name']: d['annotations'] for d in stats['class_data']}
-
-    # Build ordered list of (group_name, [class_names]) — ungrouped classes appended last
-    grouped_class_names = {cls for classes in contrastive_groups.values() for cls in classes}
-    ungrouped = [d['name'] for d in stats['class_data'] if d['name'] not in grouped_class_names]
-
-    groups = list(contrastive_groups.items())
-    for cls in ungrouped:
-        groups.append((cls, [cls]))
-
+    groups = list(contrastive_groups.items())  # dict order preserved
+    variant_labels = _infer_variant_labels(contrastive_groups)
     palette = ['#3a7fc1', '#d95f49', '#4caa6b', '#e8a838', '#9b59b6', '#1abc9c']
 
-    # Figure height: one row per group entry, min 4
-    fig_h = max(4, len(groups) * 0.55 + 1.5)
+    fig_h = max(4, len(groups) * 0.6 + 1.5)
     fig, ax = plt.subplots(figsize=(10, fig_h))
 
     y_positions = []
     y_labels = []
     bar_height = 0.35
     y = 0
+    all_counts = [ann_by_class.get(cls, 0) for _, cls_list in groups for cls in cls_list]
+    max_count = max(all_counts) if all_counts else 1
 
     for group_name, class_list in groups:
         n = len(class_list)
@@ -394,32 +413,27 @@ def _build_contrastive_chart(stats, contrastive_groups, temp_dir):
         for cls_idx, (cls_name, offset) in enumerate(zip(class_list, offsets)):
             count = ann_by_class.get(cls_name, 0)
             color = palette[cls_idx % len(palette)]
-            bar = ax.barh(y + offset, count, height=bar_height * 0.9,
-                          color=color, edgecolor='white', linewidth=0.4,
-                          label=cls_name if group_name != cls_name else None)
-            ax.text(count + max(ann_by_class.values()) * 0.005, y + offset,
-                    str(count), va='center', ha='left', fontsize=7.5)
+            ax.barh(y + offset, count, height=bar_height * 0.9,
+                    color=color, edgecolor='white', linewidth=0.4)
+            ax.text(count + max_count * 0.005, y + offset,
+                    f'{count:,}', va='center', ha='left', fontsize=7.5)
         y_positions.append(y)
         y_labels.append(group_name)
         y += 1
 
     ax.set_yticks(y_positions)
     ax.set_yticklabels(y_labels, fontsize=9)
-    ax.set_xlabel('Annotation Count', fontsize=10)
-    ax.set_title('Annotation Distribution by Class Group', fontsize=12, fontweight='bold')
+    ax.set_xlabel('Sample Count', fontsize=10)
+    ax.set_title('Contrastive Group Sample Counts', fontsize=12, fontweight='bold')
     ax.xaxis.grid(True, linestyle='--', alpha=0.6)
     ax.set_axisbelow(True)
     ax.invert_yaxis()
 
-    # Legend: only for groups with multiple classes
-    handles = []
-    for cls_idx, palette_color in enumerate(palette):
-        max_members = max((len(v) for v in contrastive_groups.values()), default=1)
-        if cls_idx < max_members:
-            from matplotlib.patches import Patch
-            handles.append(Patch(facecolor=palette_color,
-                                 label=f'Variant {cls_idx + 1}' if cls_idx > 0 else 'Primary'))
-    if len(handles) > 1:
+    # Legend using inferred variant labels
+    max_variants = max((len(v) for v in contrastive_groups.values()), default=1)
+    if max_variants > 1:
+        handles = [Patch(facecolor=palette[i % len(palette)], label=variant_labels[i])
+                   for i in range(max_variants)]
         ax.legend(handles=handles, loc='lower right', fontsize=8)
 
     plt.tight_layout()
@@ -782,45 +796,49 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
         import matplotlib.pyplot as plt
         from PIL import Image as PILImage
 
+        def _append_chart_to_story(chart_path, story, max_h=6.5 * inch):
+            if chart_path and chart_path.exists():
+                img = PILImage.open(chart_path)
+                bw, bh = img.size
+                img.close()
+                max_w = 7 * inch
+                scaled_h = bh * (max_w / bw)
+                if scaled_h > max_h:
+                    scale = max_h / scaled_h
+                    max_w *= scale
+                    scaled_h = max_h
+                story.append(Image(str(chart_path), width=max_w, height=scaled_h))
+                story.append(Spacer(1, 0.2 * inch))
+
+        # Plain annotation distribution — always shown
+        bar_chart_path = temp_dir / "annotation_distribution.png"
+        class_names_bar = [d['name'] for d in stats['class_data']]
+        ann_counts = [d['annotations'] for d in stats['class_data']]
+
+        fig_w = max(10, len(class_names_bar) * 0.35)
+        fig, ax = plt.subplots(figsize=(fig_w, 4.5))
+        bars = ax.bar(range(len(class_names_bar)), ann_counts, color='#3a7fc1', edgecolor='#2c5f8a', linewidth=0.5)
+
+        for bar, count in zip(bars, ann_counts):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(ann_counts) * 0.005,
+                    str(count), ha='center', va='bottom', fontsize=7, rotation=0)
+
+        ax.set_xticks(range(len(class_names_bar)))
+        ax.set_xticklabels(class_names_bar, rotation=45, ha='right', fontsize=8)
+        ax.set_ylabel('Annotation Count', fontsize=10)
+        ax.set_xlabel('Class', fontsize=10)
+        ax.set_title('Annotation Distribution per Class', fontsize=12, fontweight='bold')
+        ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+        ax.set_axisbelow(True)
+        plt.tight_layout()
+        plt.savefig(bar_chart_path, dpi=100, bbox_inches='tight')
+        plt.close()
+        _append_chart_to_story(bar_chart_path, story)
+
+        # Contrastive group chart — only when groups provided, shown after plain chart
         if contrastive_groups:
-            bar_chart_path = _build_contrastive_chart(stats, contrastive_groups, temp_dir)
-        else:
-            bar_chart_path = temp_dir / "annotation_distribution.png"
-            class_names_bar = [d['name'] for d in stats['class_data']]
-            ann_counts = [d['annotations'] for d in stats['class_data']]
-
-            fig_w = max(10, len(class_names_bar) * 0.35)
-            fig, ax = plt.subplots(figsize=(fig_w, 4.5))
-            bars = ax.bar(range(len(class_names_bar)), ann_counts, color='#3a7fc1', edgecolor='#2c5f8a', linewidth=0.5)
-
-            for bar, count in zip(bars, ann_counts):
-                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(ann_counts) * 0.005,
-                        str(count), ha='center', va='bottom', fontsize=7, rotation=0)
-
-            ax.set_xticks(range(len(class_names_bar)))
-            ax.set_xticklabels(class_names_bar, rotation=45, ha='right', fontsize=8)
-            ax.set_ylabel('Annotation Count', fontsize=10)
-            ax.set_xlabel('Class', fontsize=10)
-            ax.set_title('Annotation Distribution per Class', fontsize=12, fontweight='bold')
-            ax.yaxis.grid(True, linestyle='--', alpha=0.7)
-            ax.set_axisbelow(True)
-            plt.tight_layout()
-            plt.savefig(bar_chart_path, dpi=100, bbox_inches='tight')
-            plt.close()
-
-        if bar_chart_path and bar_chart_path.exists():
-            img_bar = PILImage.open(bar_chart_path)
-            bw, bh = img_bar.size
-            img_bar.close()
-            max_w = 7 * inch
-            max_h = 6.5 * inch
-            bar_scaled_h = bh * (max_w / bw)
-            if bar_scaled_h > max_h:
-                scale = max_h / bar_scaled_h
-                max_w = max_w * scale
-                bar_scaled_h = max_h
-            story.append(Image(str(bar_chart_path), width=max_w, height=bar_scaled_h))
-            story.append(Spacer(1, 0.2*inch))
+            contrastive_chart_path = _build_contrastive_chart(stats, contrastive_groups, temp_dir)
+            _append_chart_to_story(contrastive_chart_path, story)
 
     # --- Section: Per-Class Summary (replaces imbalance graph) ---
     story.append(Paragraph("CLASS DISTRIBUTION & CLUSTERING SUMMARY", heading_style))

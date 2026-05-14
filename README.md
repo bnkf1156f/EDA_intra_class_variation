@@ -123,10 +123,10 @@ Use after annotation to understand intra-class variation — are your classes ho
 | `num_workers` | 4 | Crop extraction threads (behind "Change defaults?" gate) |
 
 **PDF prompts** (after basic setup, when PDF generation is on):
-- "Group contrastive class pairs in distribution chart?" — if Yes, tick class names from a checkbox list to group them into named pairs (e.g., "standing vs sitting"). Grouped classes render as a horizontal grouped bar chart instead of the plain vertical bar chart. Ungrouped classes appear as single-item rows.
+- "Group contrastive class pairs in distribution chart?" — if Yes, tick class names from a checkbox list to form named groups (e.g., "fit vs wrong_fit"). A second grouped horizontal bar chart is added **after** the plain annotation chart, showing only the grouped classes. Legend labels are auto-inferred from class name suffixes (falls back to "Variant N").
 
 **PDF structure**:
-- Page 1: Dataset overview table → Pipeline config table → Annotation distribution bar chart (or contrastive grouped chart) → Per-class clustering summary table (+ annotation issue files detail if any issues found)
+- Page 1: Dataset overview table → Pipeline config table → Annotation distribution bar chart (always) → Contrastive group chart (only if groups provided) → Per-class clustering summary table (+ annotation issue files detail if any issues found)
 - Pages 2–N: Centroid overview plots (`centroid_overview_N.png`)
 - Remaining pages: Per-class montages (split at cluster row boundaries, never mid-cluster)
 - Last page: Insights & Recommendations — auto-generated color-coded flag table per class (17 rules: outlier rate, cluster count, homogeneity, imbalance, eps spread, etc.)
@@ -333,9 +333,9 @@ python "postannotation_scripts/4. generate_pdf.py" \
     --auto_tune --auto_tune_percentile 95
 ```
 
-| `--contrastive_groups_json` | None | JSON string `{"Group Name": ["class_a", "class_b"]}` — replaces plain bar chart with grouped horizontal bar chart |
+| `--contrastive_groups_json` | None | JSON string `{"Group Name": ["class_a", "class_b"]}` — adds a second grouped horizontal bar chart after the plain annotation chart, showing only grouped classes. Legend labels auto-inferred from class name suffixes. |
 
-PDF structure: Page 1 = dataset overview table → pipeline config table → annotation distribution bar chart (or contrastive grouped chart if `--contrastive_groups_json` provided) → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster). Last page = Insights & Recommendations — color-coded flag table per class (🔴 Critical / 🟡 Warning / 🟢 OK / ℹ Info) generated from 17 rules (outlier rate, cluster count, homogeneity, eps spread, imbalance, etc.).
+PDF structure: Page 1 = dataset overview table → pipeline config table → annotation distribution bar chart (always) → contrastive group chart (only if `--contrastive_groups_json` provided, grouped classes only) → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster). Last page = Insights & Recommendations — color-coded flag table per class (🔴 Critical / 🟡 Warning / 🟢 OK / ℹ Info) generated from 17 rules (outlier rate, cluster count, homogeneity, eps spread, imbalance, etc.).
 
 ### master_scripts/1. interactive_cluster_viewer.py (optional)
 
