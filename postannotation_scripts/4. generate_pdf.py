@@ -813,7 +813,12 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
             bw, bh = img_bar.size
             img_bar.close()
             max_w = 7 * inch
+            max_h = 6.5 * inch
             bar_scaled_h = bh * (max_w / bw)
+            if bar_scaled_h > max_h:
+                scale = max_h / bar_scaled_h
+                max_w = max_w * scale
+                bar_scaled_h = max_h
             story.append(Image(str(bar_chart_path), width=max_w, height=bar_scaled_h))
             story.append(Spacer(1, 0.2*inch))
 
