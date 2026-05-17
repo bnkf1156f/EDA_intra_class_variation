@@ -179,7 +179,7 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - `--umap_min_dist`: UMAP min_dist parameter (default: 0.05; 0.0=tight, 0.1=loose)
 - `--save_suffix`: Embedding filename to load (default: `embeddings_dinov2.npy`, must match Script 2 output)
 - `--max_samples`: Sample images per cluster (default: 5, outliers are all saved) — master script overrides to 20
-- `--pca_components`: PCA dims before DBSCAN (default: 128; 0=disabled). Reduces 768d→Nd before clustering — improves DBSCAN on large classes (curse of dimensionality). Applied per-class.
+- `--pca_components`: PCA dims before DBSCAN (default: 128; 0=disabled). Reduces 768d→Nd before clustering — improves DBSCAN on large classes (curse of dimensionality). Applied per-class. — master script default is 0 (disabled); set 128 manually for large classes (10K+ samples)
 - `--uniform_eps_threshold`: If auto-tuned eps < this value, class is considered uniform (default: 0.10)
 - `--uniform_downsample_target`: Target sample count when downsampling uniform classes (default: 5000) — master script overrides to 4000
 - `--uniform_min_samples`: Only downsample if class has more than this many samples (default: 10000) — master script overrides to 12000

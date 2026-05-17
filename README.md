@@ -116,7 +116,7 @@ Use after annotation to understand intra-class variation — are your classes ho
 | `min_pts` | 3 | Min points per cluster |
 | `umap_min_dist` | 0.05 | UMAP min_dist |
 | `max_cluster_samples` | 20 | Max sample images per cluster (overrides Script 3's own default of 5) |
-| `pca_components` | 128 | PCA dims before clustering (0=disabled; reduces 768d→Nd before DBSCAN) |
+| `pca_components` | 0 | PCA dims before clustering (0=disabled; reduces 768d→Nd before DBSCAN; set 128 for large classes 10K+ samples) |
 | `uniform_downsample_target` | 4000 | Downsample target for uniform classes (overrides Script 3's default of 5000) |
 | `uniform_min_samples` | 12000 | Trigger downsampling only if class exceeds this (overrides Script 3's default of 10000) |
 | `use_embedding_cache` | True | Skip re-generation if embeddings exist |
@@ -306,7 +306,7 @@ Output:
 ```
 clustering_results/
 ├── {class}_clusters.png   (only if --save_class_scatter)
-├── {class}_montage.png
+├── {class}_montage.jpg
 ├── {class}_samples/
 │   ├── cluster_0/
 │   └── outliers/
