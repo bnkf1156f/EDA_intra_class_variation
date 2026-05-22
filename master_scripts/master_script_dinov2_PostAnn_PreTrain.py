@@ -210,15 +210,13 @@ def main():
 
     # Embedding Handling
     if change_defaults:
-        batch_size          = int(_prompt_text("DINOv2 batch size (reduce if GPU OOM)", 64))
-        save_suffix         = _prompt_text("Embeddings filename", "embeddings_dinov2.npy")
-        use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
-        num_workers         = int(_prompt_text("Crop extraction threads (4=safe for NVMe laptop, 8=fast NVMe desktop)", 4))
+        batch_size  = int(_prompt_text("DINOv2 batch size (reduce if GPU OOM)", 64))
+        save_suffix = _prompt_text("Embeddings filename", "embeddings_dinov2.npy")
+        num_workers = int(_prompt_text("Crop extraction threads (4=safe for NVMe laptop, 8=fast NVMe desktop)", 4))
     else:
-        batch_size          = 64
-        save_suffix         = "embeddings_dinov2.npy"
-        use_embedding_cache = True
-        num_workers         = 4
+        batch_size  = 64
+        save_suffix = "embeddings_dinov2.npy"
+        num_workers = 4
 
     # Clustering flags
     auto_tune        = _ask(questionary.confirm("Enable auto-tune eps?", default=True))
@@ -253,7 +251,7 @@ def main():
         uniform_class_min_samples       = 12000
 
     # PDF handling
-    temp_file    = os.path.join(RESULTS_DIR, "temp_ann_file.txt")
+    temp_file    = os.path.join(cropped_bbox_dir, "temp_ann_file.txt")
     pdf_generate = _ask(questionary.confirm("Generate PDF report?", default=True))
     pdf_name     = _prompt_text("Output PDF filename (no extension)", _default_pdf_name) if pdf_generate else _default_pdf_name
     pdf_quality  = int(_prompt_text("PDF image quality (1-95, 75=balanced, 90=high, 50=small file)", 75)) if change_defaults and pdf_generate else 75
@@ -383,10 +381,9 @@ def main():
         embedding_args = [
             "--root", cropped_bbox_dir,
             "--batch", str(batch_size),
-            "--save_suffix", save_suffix
+            "--save_suffix", save_suffix,
+            "--use_cache",
         ]
-        if use_embedding_cache:
-            embedding_args.append("--use_cache")
 
         run_step("postannotation_scripts/2. save_dinov2_embeddings_per_class.py", embedding_args, cool_down_after=True)
     else:
@@ -442,23 +439,9 @@ def main():
             pdf_args.extend(["--contrastive_groups_json", contrastive_groups_json])
         run_step("postannotation_scripts/4. generate_pdf.py", pdf_args, cool_down_after=False)
 
-        # Ask user whether to delete temp file
         print("\n" + "="*60)
         print(f"📄 PDF Report generated: {os.path.join(output_cluster_dir, pdf_name)}.pdf")
-        print(f"📁 Temporary annotation file: {temp_file}")
         print("="*60)
-        response = input("\n🗑️  Delete temporary annotation file? (y/n): ")
-        if response.lower() == 'y':
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-                    print(f"   ✅ Deleted: {temp_file}")
-                else:
-                    print(f"   ⚠️  File not found: {temp_file}")
-            except Exception as e:
-                print(f"   ❌ Error deleting file: {e}")
-        else:
-            print(f"   📌 Keeping: {temp_file}")
 
     # Ask user whether to delete cropped images folder
     if os.path.isdir(cropped_bbox_dir):

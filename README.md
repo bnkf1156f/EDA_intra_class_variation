@@ -129,7 +129,7 @@ Use after annotation to understand intra-class variation — are your classes ho
 - Page 1: Dataset overview table → Pipeline config table → Annotation distribution bar chart (always) → Contrastive group chart (only if groups provided) → Per-class clustering summary table (+ annotation issue files detail if any issues found)
 - Pages 2–N: Centroid overview plots (`centroid_overview_N.png`)
 - Remaining pages: Per-class montages (split at cluster row boundaries, never mid-cluster)
-- Last page: Insights & Recommendations — auto-generated color-coded flag table per class (17 rules: outlier rate, cluster count, homogeneity, imbalance, eps spread, etc.)
+- Last page: Insights & Recommendations — issue-centric layout grouped by severity (🔴 Critical → 🟡 Warning → 🟢 OK → ℹ Info). Each row = one unique issue type; "Classes Affected" column lists all classes that triggered it. Max ~1 page regardless of class count. No class-imbalance row.
 
 **Pipeline steps** (run automatically):
 1. `postannotation_scripts/1. ann_txt_files_crop_bbox.py` — crop + validate dataset
@@ -184,7 +184,7 @@ python "postannotation_scripts/1. ann_txt_files_crop_bbox.py" \
     --output_dir cropped_imgs_by_class
 ```
 
-Validates dataset before cropping — catches unexpected class IDs, empty labels, imbalance ratio >10x. Output: `cropped_imgs_by_class/{class}/*.jpg`
+Validates dataset before cropping — catches unexpected class IDs, empty labels, imbalance ratio >10x, and duplicate image basenames (same filename in multiple formats, e.g. `foo.png` + `foo.jpg` in the same folder). Output: `cropped_imgs_by_class/{class}/*.jpg`
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -324,7 +324,7 @@ Usually invoked automatically by the pre-training master script. Standalone use:
 
 ```bash
 python "postannotation_scripts/4. generate_pdf.py" \
-    --temp_txt_file postann_pretrain_results/temp_ann_file.txt \
+    --temp_txt_file postann_pretrain_results/cropped_imgs_by_class_MyDataset/temp_ann_file.txt \
     --clustering_dir postann_pretrain_results/clustering_results_MyDataset \
     --pdf_name "postann_pretrain_results/clustering_results_MyDataset/PDF_REPORT_MyDataset" \
     --imgs_path path/to/images \
@@ -335,7 +335,7 @@ python "postannotation_scripts/4. generate_pdf.py" \
 
 | `--contrastive_groups_json` | None | JSON string `{"Group Name": ["class_a", "class_b"]}` — adds a second grouped horizontal bar chart after the plain annotation chart, showing only grouped classes. Legend labels auto-inferred from class name suffixes. |
 
-PDF structure: Page 1 = dataset overview table → pipeline config table → annotation distribution bar chart (always) → contrastive group chart (only if `--contrastive_groups_json` provided, grouped classes only) → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster). Last page = Insights & Recommendations — color-coded flag table per class (🔴 Critical / 🟡 Warning / 🟢 OK / ℹ Info) generated from 17 rules (outlier rate, cluster count, homogeneity, eps spread, imbalance, etc.).
+PDF structure: Page 1 = dataset overview table (includes Duplicate Image Basenames row) → pipeline config table → annotation distribution bar chart (always) → contrastive group chart (only if `--contrastive_groups_json` provided, grouped classes only) → per-class clustering summary table (+ annotation issue files detail if any issues found). Pages 2–N = centroid overview plots (`centroid_overview_N.png`). Remaining pages = per-class montages (split at cluster row boundaries, never mid-cluster). Last page = Insights & Recommendations — issue-centric, grouped by severity (🔴 Critical → 🟡 Warning → 🟢 OK → ℹ Info); each row is one issue type listing all affected classes. No class-imbalance row.
 
 ### master_scripts/1. interactive_cluster_viewer.py (optional)
 

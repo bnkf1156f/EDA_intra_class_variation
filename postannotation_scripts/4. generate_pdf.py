@@ -22,6 +22,7 @@ Output:
 
 import os
 import argparse
+from collections import OrderedDict
 from pathlib import Path
 import pandas as pd
 from reportlab.lib.pagesizes import letter
@@ -61,6 +62,8 @@ def parse_temp_txt_file(txt_path):
         'empty_crop_file_list': [],
         'background_image_file_list': [],  # images with no annotation txt
         'empty_annotation_file_list': [],  # txt files that are empty
+        'duplicate_basename_count': 0,
+        'duplicate_basename_list': [],     # each entry = list of filenames sharing a basename
     }
 
     in_class_section = False
@@ -125,6 +128,7 @@ def parse_temp_txt_file(txt_path):
         'INVALID ANNOTATION FILES (Malformed Data):':   'invalid_annotation_files',
         'ERRORS WHILE READING FILES:':                  'error_reading_files',
         'PNG FILES WITH NO TXT ANNOTATIONS':            'background_images',
+        'DUPLICATE IMAGE BASENAMES':                    'duplicate_basename_count',
     }
     current_key = None
     for line in content.split('\n'):
@@ -177,6 +181,8 @@ def parse_temp_txt_file(txt_path):
             while i < len(lines) and not lines[i].startswith('Count:'):
                 i += 1
             i += 1  # skip Count line
+            if i < len(lines) and lines[i].strip() == 'Files:':
+                i += 1
             while i < len(lines) and lines[i].strip().startswith('- '):
                 stats['degenerate_crop_file_list'].append(lines[i].strip()[2:])
                 i += 1
@@ -187,7 +193,9 @@ def parse_temp_txt_file(txt_path):
             i += 1
             while i < len(lines) and not lines[i].startswith('Count:'):
                 i += 1
-            i += 1
+            i += 1  # skip Count line
+            if i < len(lines) and lines[i].strip() == 'Files:':
+                i += 1
             while i < len(lines) and lines[i].strip().startswith('- '):
                 stats['empty_crop_file_list'].append(lines[i].strip()[2:])
                 i += 1
@@ -201,6 +209,19 @@ def parse_temp_txt_file(txt_path):
             i += 1
             while i < len(lines) and lines[i].strip().startswith('- '):
                 stats['missing_img_files'].append(lines[i].strip()[2:])
+                i += 1
+            continue
+
+        # Duplicate image basenames
+        if 'DUPLICATE IMAGE BASENAMES' in line:
+            i += 1
+            while i < len(lines) and not lines[i].startswith('Count:'):
+                i += 1
+            i += 1  # skip Count line
+            if i < len(lines) and lines[i].strip() == 'Files:':
+                i += 1
+            while i < len(lines) and lines[i].strip().startswith('- '):
+                stats['duplicate_basename_list'].append(lines[i].strip()[2:])
                 i += 1
             continue
 
@@ -459,177 +480,159 @@ def _parse_outlier_rate(raw):
 
 
 def _generate_insights_page(cluster_df, stats, story, heading_style, normal_style):
-    """Append an Insights & Recommendations page to story."""
+    """Append a condensed Insights & Recommendations page — one row per issue type, classes listed inside."""
     if cluster_df is None or cluster_df.empty:
         return
 
-    story.append(Paragraph("INSIGHTS & RECOMMENDATIONS", heading_style))
-    story.append(Paragraph(
-        "Auto-generated from clustering statistics. Flags are derived from embedding structure — "
-        "use as a starting point for data review, not a definitive verdict.",
-        normal_style))
-    story.append(Spacer(1, 0.15 * inch))
-
-    # --- Compute imbalance across all classes (use total n_samples, not clustered) ---
-    total_counts = []
-    for _, row in cluster_df.iterrows():
-        _, total = _parse_n_samples(row['n_samples'])
-        total_counts.append(total)
-
-    imbalance_ratio = (max(total_counts) / min(total_counts)) if total_counts and min(total_counts) > 0 else None
-
-    RED   = colors.HexColor('#c0392b')
+    RED    = colors.HexColor('#c0392b')
     ORANGE = colors.HexColor('#d35400')
-    GREEN = colors.HexColor('#27ae60')
-    BLUE  = colors.HexColor('#2980b9')
-    GREY  = colors.HexColor('#555555')
+    GREEN  = colors.HexColor('#27ae60')
+    BLUE   = colors.HexColor('#2980b9')
 
-    SEV_COLOR = {'critical': RED, 'warning': ORANGE, 'ok': GREEN, 'info': BLUE}
-    SEV_LABEL = {'critical': '🔴 Critical', 'warning': '🟡 Warning', 'ok': '🟢 OK', 'info': 'ℹ Info'}
+    # issue_key → (severity, flag_text, recommendation_text, [class_names])
+    # Ordered dict preserves insertion order = rule priority order
+    issue_map = OrderedDict()
 
-    # Build per-class flag rows
-    table_rows = [['Class', 'Severity', 'Flag', 'Recommendation']]
-    any_flags = False
+    def _add(key, sev, flag, rec, cls):
+        if key not in issue_map:
+            issue_map[key] = (sev, flag, rec, [])
+        issue_map[key][3].append(cls)
 
     for _, row in cluster_df.iterrows():
         cls = str(row['class'])
         n_clustered, n_total = _parse_n_samples(row['n_samples'])
         n_clusters   = int(row['n_clusters'])
-        n_outliers   = int(row['n_outliers'])
         outlier_rate = _parse_outlier_rate(row['outlier_rate'])
         eps_used     = float(row['eps_used'])
         downsampled  = str(row.get('downsampled', 'no')).lower() == 'yes'
 
-        flags = []  # list of (severity, flag_text, recommendation_text)
-
-        # Rule 1 & 2 — outlier rate
         if outlier_rate > 8:
-            flags.append(('critical', 'High outlier rate',
-                          'Review crops for annotation errors, truncated bboxes, or wrong-class labels'))
+            _add('high_outlier', 'critical', 'High outlier rate',
+                 'Review crops for annotation errors, truncated bboxes, or wrong-class labels', cls)
         elif outlier_rate > 3:
-            flags.append(('warning', 'Moderate outlier rate',
-                          'Spot-check outlier folder; may be acceptable if class is visually diverse'))
+            _add('mod_outlier', 'warning', 'Moderate outlier rate',
+                 'Spot-check outlier folder; may be acceptable if class is visually diverse', cls)
 
-        # Rule 3 & 4 — cluster count
         if n_clusters > 15:
-            flags.append(('critical', 'High intra-class variation',
-                          'Verify class definition is consistent; consider splitting into sub-classes'))
+            _add('high_variation', 'critical', 'High intra-class variation',
+                 'Verify class definition is consistent; consider splitting into sub-classes', cls)
         elif n_clusters > 5:
-            flags.append(('warning', 'Moderate cluster count',
-                          'Review cluster montages — may reflect real sub-variants or lighting differences'))
+            _add('mod_clusters', 'warning', 'Moderate cluster count',
+                 'Review cluster montages — may reflect real sub-variants or lighting differences', cls)
 
-        # Rule 5 — all noise
         if n_clusters == 0:
-            flags.append(('critical', 'All samples noise',
-                          'DBSCAN found no coherent structure — loosen eps or inspect data quality'))
+            _add('all_noise', 'critical', 'All samples noise',
+                 'DBSCAN found no coherent structure — loosen eps or inspect data quality', cls)
 
-        # Rule 6 — single cluster + high outliers
         if n_clusters == 1 and outlier_rate > 8:
-            flags.append(('warning', 'Tight core + scattered noise',
-                          'Possible bimodal class; inspect outlier folder — may be unlabelled variant'))
+            _add('tight_core_noise', 'warning', 'Tight core + scattered noise',
+                 'Possible bimodal class; inspect outlier folder — may be unlabelled variant', cls)
 
-        # Rule 7 — homogeneous OK
-        if n_clusters <= 2 and n_clustered > 1000 and outlier_rate <= 3:
-            flags.append(('ok', 'Visually homogeneous',
-                          'Class is consistent — good for training'))
-
-        # Rule 8 & 9 — sample count
         if n_clustered < 50:
-            flags.append(('critical', 'Insufficient data',
-                          'Results unreliable — collect more samples before drawing conclusions'))
+            _add('insufficient_data', 'critical', 'Insufficient data',
+                 'Results unreliable — collect more samples before drawing conclusions', cls)
         elif n_clustered < 200:
-            flags.append(('warning', 'Low sample count',
-                          'Model may underfit this class; collect more if possible'))
+            _add('low_samples', 'warning', 'Low sample count',
+                 'Model may underfit this class; collect more if possible', cls)
 
-        # Rule 12 — uniform + high outliers
         if downsampled and outlier_rate > 8:
-            flags.append(('warning', 'Systematic annotation noise',
-                          'Visually homogeneous but high outliers — likely labelling errors, not diversity'))
+            _add('sys_noise', 'warning', 'Systematic annotation noise',
+                 'Visually homogeneous but high outliers — likely labelling errors, not diversity', cls)
 
-        # Rule 13 — eps very high
         if eps_used > 0.5:
-            flags.append(('warning', 'Embeddings very spread',
-                          'Class may contain fundamentally different visual concepts — review montage'))
+            _add('spread', 'warning', 'Embeddings very spread',
+                 'Class may contain fundamentally different visual concepts — review montage', cls)
 
-        # Rule 14 — eps very tight + many clusters
         if eps_used < 0.05 and n_clusters > 5:
-            flags.append(('warning', 'Over-fragmented at tight eps',
-                          'Many micro-clusters; may be noise-sensitive — try raising auto_tune_percentile'))
+            _add('over_frag', 'warning', 'Over-fragmented at tight eps',
+                 'Many micro-clusters; may be noise-sensitive — try raising auto_tune_percentile', cls)
 
-        # Rule 15 — downsampled info
-        if downsampled:
-            flags.append(('info', 'Large class downsampled',
-                          f'Clustering ran on {n_clustered:,} of {n_total:,} samples — results representative'))
-
-        # Rule 16 — many clusters on small class
         if n_clusters > 3 and n_clustered < 300:
-            flags.append(('warning', 'Over-clustering on small class',
-                          'Too many clusters for sample count — likely noise; raise min_cluster_size'))
+            _add('over_cluster_small', 'warning', 'Over-clustering on small class',
+                 'Too many clusters for sample count — likely noise; raise min_cluster_size', cls)
 
-        # Rule 17 — zero outliers on large class
+        if n_clusters <= 2 and n_clustered > 1000 and outlier_rate <= 3:
+            _add('homogeneous', 'ok', 'Visually homogeneous',
+                 'Class is consistent — good for training', cls)
+
         if outlier_rate == 0.0 and n_clustered > 500:
-            flags.append(('info', 'No outliers detected',
-                          'Either very clean data or eps too loose — verify montage looks homogeneous'))
+            _add('no_outliers', 'info', 'No outliers detected',
+                 'Either very clean data or eps too loose — verify montage looks homogeneous', cls)
 
-        if not flags:
-            flags.append(('ok', '✓ No issues', 'Class passed all checks'))
-        else:
-            any_flags = True
+        if downsampled:
+            _add('downsampled', 'info', 'Large class downsampled',
+                 'Clustering ran on a sample — results representative but not exhaustive', cls)
 
-        for sev, flag, rec in flags:
-            sev_label = SEV_LABEL[sev]
-            table_rows.append([
-                Paragraph(cls, ParagraphStyle('IC', parent=normal_style, fontSize=8, fontName='Helvetica-Bold')),
-                Paragraph(sev_label, ParagraphStyle('IS', parent=normal_style, fontSize=8)),
-                Paragraph(flag, ParagraphStyle('IF', parent=normal_style, fontSize=8)),
-                Paragraph(rec, ParagraphStyle('IR', parent=normal_style, fontSize=8, leading=11)),
-            ])
+    story.append(Paragraph("INSIGHTS & RECOMMENDATIONS", heading_style))
+    story.append(Paragraph(
+        "Grouped by issue type. Each row lists all classes that triggered the flag. "
+        "Derived from embedding structure — use as a starting point for review.",
+        normal_style))
+    story.append(Spacer(1, 0.12 * inch))
 
-    # Rules 10 & 11 — dataset-level imbalance (appended as a special row)
-    if imbalance_ratio is not None:
-        if imbalance_ratio > 10:
-            sev, flag, rec = 'critical', 'Severe class imbalance', \
-                f'Max/min ratio {imbalance_ratio:.1f}× — risk of model bias; consider oversampling or weighted loss'
-        elif imbalance_ratio > 3:
-            sev, flag, rec = 'warning', 'Moderate class imbalance', \
-                f'Max/min ratio {imbalance_ratio:.1f}× — monitor per-class recall; minority class may drop'
-        else:
-            sev, flag, rec = 'ok', 'Dataset balanced', \
-                f'Max/min ratio {imbalance_ratio:.1f}× — no imbalance concern'
-
-        table_rows.append([
-            Paragraph('(all classes)', ParagraphStyle('IC', parent=normal_style, fontSize=8, fontName='Helvetica-Bold')),
-            Paragraph(SEV_LABEL[sev], ParagraphStyle('IS', parent=normal_style, fontSize=8)),
-            Paragraph(flag, ParagraphStyle('IF', parent=normal_style, fontSize=8)),
-            Paragraph(rec, ParagraphStyle('IR', parent=normal_style, fontSize=8, leading=11)),
-        ])
-
-    col_widths = [1.3*inch, 0.85*inch, 1.6*inch, 3.75*inch]
-    tbl = Table(table_rows, colWidths=col_widths, repeatRows=1)
-    ts = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
-        ('TOPPADDING', (0, 0), (-1, 0), 7),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cccccc')),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 1), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-    ])
-    tbl.setStyle(ts)
-    story.append(tbl)
-
-    if not any_flags:
+    if not issue_map:
         story.append(Spacer(1, 0.15*inch))
         story.append(Paragraph(
             "✅ All classes passed all checks. Dataset looks clean.",
             ParagraphStyle('GoodNews', parent=normal_style, fontSize=11,
                            textColor=GREEN, fontName='Helvetica-Bold')))
+        return
+
+    SEV_ORDER = ['critical', 'warning', 'ok', 'info']
+    SEV_HEADER = {
+        'critical': ('🔴 Critical Issues', RED),
+        'warning':  ('🟡 Warnings',        ORANGE),
+        'ok':       ('🟢 OK',              GREEN),
+        'info':     ('ℹ Info',             BLUE),
+    }
+
+    # Group issues by severity
+    grouped = {s: [] for s in SEV_ORDER}
+    for key, (sev, flag, rec, classes) in issue_map.items():
+        grouped[sev].append((flag, rec, classes))
+
+    col_widths = [1.8*inch, 2.5*inch, 3.2*inch]
+
+    for sev in SEV_ORDER:
+        entries = grouped[sev]
+        if not entries:
+            continue
+
+        header_text, header_color = SEV_HEADER[sev]
+        story.append(Paragraph(header_text, ParagraphStyle(
+            f'SevHead_{sev}', parent=normal_style, fontSize=10,
+            fontName='Helvetica-Bold', textColor=header_color,
+            spaceBefore=8, spaceAfter=3)))
+
+        table_rows = [['Issue', 'Recommendation', 'Classes Affected']]
+        for flag, rec, classes in entries:
+            classes_str = ', '.join(classes)
+            table_rows.append([
+                Paragraph(flag, ParagraphStyle('IF', parent=normal_style, fontSize=8, fontName='Helvetica-Bold')),
+                Paragraph(rec,  ParagraphStyle('IR', parent=normal_style, fontSize=8, leading=11)),
+                Paragraph(classes_str, ParagraphStyle('IC', parent=normal_style, fontSize=7.5, leading=10,
+                                                       textColor=colors.HexColor('#333333'))),
+            ])
+
+        tbl = Table(table_rows, colWidths=col_widths, repeatRows=1)
+        ts = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8.5),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cccccc')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 1), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+        ])
+        tbl.setStyle(ts)
+        story.append(tbl)
+        story.append(Spacer(1, 0.08*inch))
 
 
 def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
@@ -725,6 +728,8 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
     dataset_rows.append(['Empty Annotation Files (no objects)', _warn(stats.get('empty_annotation_files', 0), 'file(s)')])
     dataset_rows.append(['Invalid Annotation Files (malformed)', _warn(stats.get('invalid_annotation_files', 0), 'file(s)')])
     dataset_rows.append(['Errors Reading Image Files', _warn(stats.get('error_reading_files', 0), 'file(s)')])
+    dup_count = stats.get('duplicate_basename_count', 0)
+    dataset_rows.append(['Duplicate Image Basenames (multi-format)', _warn(dup_count, 'basename(s) — same file in .png + .jpg')])
 
     dataset_table = Table(dataset_rows, colWidths=[3*inch, 4.5*inch])
     dataset_table.setStyle(_table_style_header('#2c3e50'))
@@ -750,6 +755,7 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
     _add_issue_block(issue_rows, "Degenerate Crops (<3px)", stats['degenerate_crop_file_list'])
     _add_issue_block(issue_rows, "Empty Crops (zero-size)", stats['empty_crop_file_list'])
     _add_issue_block(issue_rows, "TXT Files — Image Not Found", stats['missing_img_files'])
+    _add_issue_block(issue_rows, "Duplicate Image Basenames (multi-format)", stats['duplicate_basename_list'])
 
     for cls_id, ann_count, files in stats['unexpected_class_files']:
         _add_issue_block(

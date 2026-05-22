@@ -146,6 +146,7 @@ def main():
     empty_crop_files = []
     degenerate_crop_files = []  # non-empty but min(W,H) < 3px
     all_missing_imgs = []       # txt files whose image was not found on disk
+    all_duplicate_basenames = []  # basenames with >1 image extension in same split folder
     crop_counts = {cls: 0 for cls in classes_to_target}
 
     # =========================================================================
@@ -161,6 +162,16 @@ def main():
         txt_files = [f for f in os.listdir(split_label_dir) if f.endswith(".txt")]
         img_files_set = set(img_files)
         txt_files_set = set(txt_files)
+
+        # Detect basenames that exist in multiple image formats (e.g. foo.png + foo.jpg)
+        _basename_exts = {}
+        for f in img_files:
+            base = os.path.splitext(f)[0]
+            _basename_exts.setdefault(base, []).append(f)
+        split_dups = [files for files in _basename_exts.values() if len(files) > 1]
+        for dup_files in split_dups:
+            prefix = f"{split_name}/" if split_name else ""
+            all_duplicate_basenames.append([prefix + f for f in dup_files])
 
         total_img_count += len(img_files)
         total_txt_count += len([t for t in txt_files if t != 'classes.txt' and not t.endswith('_image_list.txt')])
@@ -187,6 +198,13 @@ def main():
                     break
             if not found:
                 missing_imgs.append(txt)
+
+        if split_dups:
+            print(f"⚠️  {len(split_dups)} BASENAME(S) HAVE MULTIPLE IMAGE FORMATS{split_label} (e.g. .png + .jpg):")
+            for dup_files in split_dups[:5]:
+                print(f"    - {', '.join(dup_files)}")
+            if len(split_dups) > 5:
+                print(f"    ... and {len(split_dups) - 5} more")
 
         if missing_imgs:
             print(f"⚠️  {len(missing_imgs)} TXT FILE(S) HAVE NO MATCHING IMAGE{split_label}:")
@@ -515,6 +533,16 @@ def main():
                 f.write("Files:\n")
                 for file in all_missing_imgs:
                     f.write(f"  - {file}\n")
+            f.write("\n")
+
+            # Duplicate basenames (same image in multiple formats)
+            f.write("DUPLICATE IMAGE BASENAMES (same basename, multiple formats):\n")
+            f.write("-"*70 + "\n")
+            f.write(f"Count: {len(all_duplicate_basenames)}\n")
+            if all_duplicate_basenames:
+                f.write("Files:\n")
+                for dup_group in all_duplicate_basenames:
+                    f.write(f"  - {', '.join(dup_group)}\n")
             f.write("\n")
 
             # Unexpected / out-of-range class IDs
