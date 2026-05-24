@@ -25,7 +25,18 @@ python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py"  # pre-training
 python "master_scripts/master_script_dinov2_PostTrain.py"         # post-training (edit config vars at top of script)
 ```
 
-Pre-annotation and pre-training use interactive prompts. Post-training requires editing config variables at the top of the script.
+Pre-annotation and pre-training support two modes: **interactive** (questionary prompts, default) and **headless** (CLI args, for programmatic/service use). Post-training requires editing config variables at the top of the script.
+
+**Headless usage:**
+```bash
+# PostAnn/PreTrain — minimum required args
+python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py" \
+    --imgs_path /data/images --label_path /data/labels --classes_txt /data/classes.txt
+
+# PreAnn — minimum required args
+python "master_scripts/master_script_dinov2_PreAnn.py" --frames_dir /data/frames
+```
+In headless mode: output dirs wiped fresh each run, embedding cache disabled, no stdin prompts.
 
 ---
 

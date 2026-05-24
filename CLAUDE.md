@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This is an **intra-class variation analysis pipeline** for object detection datasets. It analyzes class heterogeneity using DINOv2 embeddings and clustering to discover sub-groups and outliers.
+**Intra-class variation analysis pipeline** for object detection datasets. Analyzes class heterogeneity using DINOv2 embeddings and clustering to discover sub-groups and outliers.
 
 **Three pipeline modes:**
 - **Pre-annotation**: Analyzes raw frames BEFORE annotation to assess quality/diversity (uses DINOv2 + PaCMAP)
@@ -12,8 +12,8 @@ This is an **intra-class variation analysis pipeline** for object detection data
 - **Post-training**: Analyzes trained YOLOv8 model detections on video (uses DINOv2 embeddings, validates model quality)
 
 ## Core Principles
-- **Keep it simple** - This is exploratory EDA, not production code
-- **No overcomplications** - Engineers just need to see cluster patterns and outliers
+- **Keep it simple** - Exploratory EDA, not production code
+- **No overcomplications** - Engineers need cluster patterns and outliers
 - **Consistency first** - README must match actual script behavior exactly
 
 ## Scripts
@@ -33,7 +33,7 @@ This is an **intra-class variation analysis pipeline** for object detection data
 
 ## Running the Pipeline
 
-**IMPORTANT**: Always run from the **project root** directory (where `exec.bat` lives). Running from `master_scripts/` will cause path errors.
+**IMPORTANT**: Always run from **project root** directory (where `exec.bat` lives). Running from `master_scripts/` causes path errors.
 
 ### Automated (Recommended)
 ```bash
@@ -46,7 +46,21 @@ python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py"  # Pre-training
 python "master_scripts/master_script_dinov2_PostTrain.py"         # Post-training (not in exec.bat)
 ```
 
-All master scripts use **interactive questionary prompts** — paths use autocomplete with validation, booleans use Yes/No confirms, and niche parameters are hidden behind a "Change default parameters?" gate.
+Both master scripts support two modes:
+- **Interactive** (default): questionary prompts — path autocomplete, Yes/No confirms, "Change default parameters?" gate
+- **Headless / non-interactive**: pass `--imgs_path`, `--label_path`, `--classes_txt` (PostAnn) or `--frames_dir` (PreAnn) without `--interactive` — all args resolve from CLI, no stdin. Used for programmatic/service invocation.
+
+```bash
+# Headless PostAnn example
+python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py" \
+    --imgs_path /data/images --label_path /data/labels --classes_txt /data/classes.txt
+
+# Headless PreAnn example
+python "master_scripts/master_script_dinov2_PreAnn.py" \
+    --frames_dir /data/frames
+```
+
+Headless behaviour: both dirs/outputs wiped fresh at start; crops deleted at end (PostAnn); embedding cache force-disabled (PreAnn); `input()` prompts skipped (RAM warning logs and continues); logs written to `eda_run.log` / `preann_run.log` co-located with results.
 
 ### Manual Step-by-Step
 
@@ -158,11 +172,11 @@ Input (annotated images OR video+model)
 ## Key Parameters
 
 ### Pre-Annotation Script (master_script_dinov2_PreAnn.py)
-All parameters are configured via interactive prompts. Clustering params are always asked; niche params only shown if "Change default parameters?" = Yes.
+All parameters configured via interactive prompts. Clustering params always asked; niche params only shown if "Change default parameters?" = Yes.
 
 **Always prompted (clustering):**
-- `min_cluster_size`: Smallest group of frames that counts as an activity (default 25)
-- `min_samples`: How strict a frame must match neighbors to join a cluster (default 3, lower=more frames included)
+- `min_cluster_size`: Smallest frame group that counts as activity (default 25)
+- `min_samples`: How strict frame must match neighbors to join cluster (default 3, lower=more frames included)
 - `use_embedding_cache`: Cache embeddings to disk for faster re-runs (default True)
 
 **Behind "Change defaults?" gate:**
@@ -178,9 +192,9 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - `--auto_tune_percentile`: k-NN percentile for auto-tune (default: 90; 90=tight, 95=balanced, 98=loose)
 - `--umap_min_dist`: UMAP min_dist parameter (default: 0.05; 0.0=tight, 0.1=loose)
 - `--save_suffix`: Embedding filename to load (default: `embeddings_dinov2.npy`, must match Script 2 output)
-- `--max_samples`: Sample images per cluster (default: 5, outliers are all saved) — master script overrides to 20
+- `--max_samples`: Sample images per cluster (default: 5, outliers all saved) — master script overrides to 20
 - `--pca_components`: PCA dims before DBSCAN (default: 128; 0=disabled). Reduces 768d→Nd before clustering — improves DBSCAN on large classes (curse of dimensionality). Applied per-class. — master script default is 0 (disabled); set 128 manually for large classes (10K+ samples)
-- `--uniform_eps_threshold`: If auto-tuned eps < this value, class is considered uniform (default: 0.10)
+- `--uniform_eps_threshold`: If auto-tuned eps < this value, class considered uniform (default: 0.10)
 - `--uniform_downsample_target`: Target sample count when downsampling uniform classes (default: 5000) — master script overrides to 4000
 - `--uniform_min_samples`: Only downsample if class has more than this many samples (default: 10000) — master script overrides to 12000
 
@@ -205,21 +219,21 @@ All parameters are configured via interactive prompts. Clustering params are alw
 8. **Person Detection**: Uses YOLOv11-pose (conf=0.3 default) to extract pose features when persons visible
 
 ### Pre-Training/Post-Training Scripts
-1. **Image-Embedding Alignment**: Script 2 creates a mapping file with name derived from `--save_suffix` parameter (e.g., `embeddings_dinov2.npy` → `embeddings_dinov2_image_list.txt`). Script 3 must receive the same `--save_suffix` value or alignment will fail. The mapping file ensures correct correspondence even when corrupted images are skipped.
+1. **Image-Embedding Alignment**: Script 2 creates mapping file with name derived from `--save_suffix` parameter (e.g., `embeddings_dinov2.npy` → `embeddings_dinov2_image_list.txt`). Script 3 must receive same `--save_suffix` value or alignment will fail. Mapping file ensures correct correspondence even when corrupted images are skipped.
 2. **Sorted Order**: Both scripts use `sorted()` on file paths to maintain consistent ordering
 3. **CSV Saving**: Script 3 has CSV saving enabled (not commented out)
-4. **Outlier Sampling**: Script 3 saves ALL outlier images (not sampled), while regular clusters are sampled up to `--max_samples`
-5. **Montage rendering**: Script 3 uses matplotlib for montages (layout: `n_cols × n_rows` grid at 200 DPI). Images are pre-decoded and resized via PIL before passing to `imshow` for speed. Layout and visual output identical to original.
-6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine number of rows
+4. **Outlier Sampling**: Script 3 saves ALL outlier images (not sampled), while regular clusters sampled up to `--max_samples`
+5. **Montage rendering**: Script 3 uses matplotlib for montages (layout: `n_cols × n_rows` grid at 200 DPI). Images pre-decoded and resized via PIL before passing to `imshow` for speed. Layout and visual output identical to original.
+6. **PDF Image Splitting**: Script 4 splits tall montages at cluster row boundaries (never mid-cluster) by reading `cluster_statistics.csv` to determine row count
 7. **PDF Image Compression**: Script 4 converts all PNG montages to JPEG quality 75 for ~80% file size reduction (configurable via `--pdf_quality`)
 8. **PIL Decompression Bomb**: Script 4 disables PIL's `MAX_IMAGE_PIXELS` limit to handle large montages (25+ clusters)
 9. **PDF Page 1 layout**: Dataset overview table → Pipeline config table → Annotation distribution bar chart (always) → Contrastive group chart (only if `--contrastive_groups_json` provided, shown after plain chart) → Per-class clustering summary table. Annotation issue files detail section rendered if any issues found.
 10. **PDF Page 2+ — centroid overview**: Pages 2+ show `centroid_overview_N.png` plots (one per page). `--cross_class` flag removed; replaced by `--save_class_scatter` for per-class UMAP scatter (off by default).
-11. **PDF args from master script**: Script 4 accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--pdf_quality`, `--contrastive_groups_json` — all passed automatically by the pre-training master script.
-12. **Reuse crops/embeddings**: Master script pre-flight detects existing `.npy` embeddings in cropped folder — offers to skip Steps 1 & 2 and jump straight to clustering. Folder is `shutil.rmtree`-deleted before overwrite (not just warned).
-13. **Contrastive distribution chart**: When `--contrastive_groups_json` is provided (JSON `{group_name: [class_a, class_b]}`), Script 4 renders a second grouped horizontal bar chart **after** the plain annotation chart (plain chart always shown). Only grouped classes appear in this chart — ungrouped classes are not appended. One row per group, sub-bars per variant, palette `['#3a7fc1', '#d95f49', ...]`. Legend labels derived from last `_`-token of class name at each variant position (if all groups agree on token); falls back to `Variant N`. Master script prompts via `questionary.checkbox` — user ticks class names to form groups, auto-names as `"A vs B"` (editable). Backward compatible — no arg = plain chart only.
-14. **PDF Insights & Recommendations page**: Script 4 appends a final page after montages — **issue-centric layout** grouped by severity (🔴 Critical → 🟡 Warning → 🟢 OK → ℹ Info). Each row = one unique issue type; "Classes Affected" column lists all classes that triggered it. Max ~1 page regardless of class count. 13 rules evaluated: outlier rate, cluster count, all-noise, tight-core+noise, insufficient data, low sample count, systematic noise, eps spread, over-fragmentation, over-clustering on small class, homogeneous OK, zero outliers, large class downsampled. No class-imbalance row. `n_samples` parsed as both plain int and `"clustered/total"` string.
-15. **Duplicate image basename detection**: Script 1 detects per-split basenames with multiple image formats (e.g. `foo.png` + `foo.jpg` in same folder). Count written to temp txt under `DUPLICATE IMAGE BASENAMES` section. Script 4 parses it and shows a row in the Dataset Overview table + file detail in the Annotation Issue Files block.
+11. **PDF args from master script**: Script 4 accepts `--imgs_path`, `--label_path`, `--classes_txt`, `--auto_tune`, `--auto_tune_percentile`, `--epsilon`, `--pdf_quality`, `--contrastive_groups_json` — all passed automatically by pre-training master script.
+12. **Reuse crops/embeddings**: Master script pre-flight detects existing `.npy` embeddings in cropped folder — offers to skip Steps 1 & 2 and jump straight to clustering. Folder is `shutil.rmtree`-deleted before overwrite (not warned).
+13. **Contrastive distribution chart**: When `--contrastive_groups_json` provided (JSON `{group_name: [class_a, class_b]}`), Script 4 renders second grouped horizontal bar chart **after** plain annotation chart (plain chart always shown). Only grouped classes appear — ungrouped not appended. One row per group, sub-bars per variant, palette `['#3a7fc1', '#d95f49', ...]`. Legend labels derived from last `_`-token of class name at each variant position (if all groups agree on token); falls back to `Variant N`. Master script prompts via `questionary.checkbox` — user ticks class names to form groups, auto-names as `"A vs B"` (editable). Backward compatible — no arg = plain chart only.
+14. **PDF Insights & Recommendations page**: Script 4 appends final page after montages — **issue-centric layout** grouped by severity (🔴 Critical → 🟡 Warning → 🟢 OK → ℹ Info). Each row = one unique issue type; "Classes Affected" column lists all classes that triggered it. Max ~1 page regardless of class count. 13 rules evaluated: outlier rate, cluster count, all-noise, tight-core+noise, insufficient data, low sample count, systematic noise, eps spread, over-fragmentation, over-clustering on small class, homogeneous OK, zero outliers, large class downsampled. No class-imbalance row. `n_samples` parsed as both plain int and `"clustered/total"` string.
+15. **Duplicate image basename detection**: Script 1 detects per-split basenames with multiple image formats (e.g. `foo.png` + `foo.jpg` in same folder). Count written to temp txt under `DUPLICATE IMAGE BASENAMES` section. Script 4 parses it and shows row in Dataset Overview table + file detail in Annotation Issue Files block.
 
 ## File Naming Patterns
 
@@ -227,7 +241,7 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - Output: `preann_results/PreAnnotation_Quality_Report_{FolderName}.pdf`
 - Outliers: `preann_results/outliers_{FolderName}/` (user prompted at end of run; warns on overwrite)
 - Temp files: `temp_preannotation_charts/` (auto-cleaned after PDF generation)
-- Embedding cache files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (DINOv2 embeddings, should be deleted before next run if inputs changed!)
+- Embedding cache files: `temp_multiview_emb_indices.npy` and `temp_multiview_emb.npy` in output_dir/ (DINOv2 embeddings, delete before next run if inputs changed!)
 
 ### Pre-Training/Post-Training Scripts (under `postann_pretrain_results/` or `posttrain_results/` respectively)
 - Script 1a outputs: `{basename}_crop_{idx}.jpg` (JPEG quality 95) + `temp_ann_file.txt`
@@ -239,11 +253,11 @@ All parameters are configured via interactive prompts. Clustering params are alw
 - Script 4 outputs: `{pdf_name}.pdf` + `temp_pdf_charts/` directory with temp JPEG chunks (auto-cleaned)
 
 ### Pre-Training Master Script Output Naming (folder-name-derived)
-The pre-training master script derives all output names from the images folder name (`{FolderName}`) at prompt time:
+Pre-training master script derives all output names from images folder name (`{FolderName}`) at prompt time:
 - Cropped images: `postann_pretrain_results/cropped_imgs_by_class_{FolderName}/`
 - Clustering results: `postann_pretrain_results/clustering_results_{FolderName}/`
 - PDF report: `postann_pretrain_results/clustering_results_{FolderName}/PDF_REPORT_{FolderName}.pdf`
-These are always prompted with the derived default shown — user can accept or override.
+Always prompted with derived default shown — user can accept or override.
 
 ## Dependencies
 
@@ -260,236 +274,39 @@ These are always prompted with the derived default shown — user can accept or 
 
 ## Guidelines for Claude Code
 
-### 🚨 CRITICAL LESSON: Understand the Request Type
+### Core Principles
+- **Simplicity first** — exploratory EDA, not production code. Minimal changes, minimal impact.
+- **No laziness** — find root causes, not workarounds. Verify assumptions against actual code before calling something bug.
+- **Do only what's asked** — don't add features, refactor surrounding code, or introduce abstractions beyond task.
 
-**The fundamental mistake (2026-01-02 - Review vs Implementation):**
-- User asked to **"REVIEW for logic and clean code"**
-- Claude immediately started **IMPLEMENTING FIXES** without permission
-- Claude made multiple code changes (grid_cols, keypoint storage, montage cleanup) without asking
-- User expected a **REPORT ONLY**, not automatic changes
+### Request Types
+- **"Review" / "Check" / "Analyze"** — report only. List issues with file:line refs. No code changes until told.
+- **"Fix" / "Implement" / "Change"** — make change. Don't ask permission on obvious fixes.
+- **Ambiguous** — make call, state assumption, proceed.
 
-**MANDATORY PROTOCOL - Distinguish Request Types:**
+### Writing Code
+- Reuse existing patterns and utilities before writing new logic.
+- Keep changes minimal — don't clean up surrounding code unless asked.
+- No block comments, no excessive docstrings, no print statements (use logger if present).
+- Memory matters — GPU is RTX 4060 8GB VRAM, 16GB RAM. Load-process-delete for large datasets (5K+ images). Never hold all images in RAM.
+- Before hardcoding batch sizes or thread counts — ask about hardware/scale.
+- Imports at top of file.
 
-**"Review" / "Check" / "Analyze" / "Find" = REPORT ONLY**
-- ✅ Generate findings report
-- ✅ List issues with line numbers and impact
-- ✅ Explain what's wrong and why
-- ❌ **DO NOT make ANY code changes**
-- ❌ **DO NOT implement fixes**
-- ✅ STOP after delivering the report
-- ✅ WAIT for user to tell you which fixes they want
+### Docs & Changelog
+- **"Update docs"** = go through ALL THREE: `README.md`, `CLAUDE.md`, `change_log/changes.md` + `change_log/plans.md`. Not one.
+- Every code change: update README section for that script + CLAUDE.md Known Quirks if behavior changed.
+- When user says "ready to commit": update `change_log/changes.md` (add bullet), remove completed items from `change_log/plans.md`. Never leave ✅ DONE items in plans.md.
+- Only update `README.md` and `CLAUDE.md` — never create new `.md` files.
 
-**"Fix" / "Implement" / "Change" / "Update" = ASK FIRST, THEN EDIT**
-- ✅ Ask which specific issues to fix
-- ✅ Discuss tradeoffs and options
-- ✅ Get explicit approval
-- ✅ Then make changes
-- ❌ **DO NOT assume which fixes user wants**
+### Consistency
+- Script names exact: e.g. `postannotation_scripts/1. ann_txt_files_crop_bbox.py`
+- Argparse defaults in scripts must match parameter tables in README and CLAUDE.md.
+- Output paths in docs must match actual `os.makedirs()` / file writes in code.
 
-**Examples:**
-
-❌ **BAD - What Claude did:**
-```
-User: "Review for logic and inefficiencies"
-Claude: *immediately makes 10 code changes*
-User: "I NEVER ASKED YOU TO CHANGE THINGS!!!"
-```
-
-✅ **GOOD - What Claude should do:**
-```
-User: "Review for logic and inefficiencies"
-Claude: *generates detailed report of 5 issues found*
-Claude: "I found these issues. Which ones would you like me to fix?"
-User: "Fix issues 1 and 3"
-Claude: *fixes only issues 1 and 3*
-```
-
-**Key principle: Do ONLY what was asked. Don't add extra work without permission. STOP after completing the request.**
-
----
-
-### 🚨 CRITICAL: ASK FIRST, EDIT SECOND
-
-**NEVER jump straight to implementing fixes without discussion!**
-
-**The fundamental mistake (2026-01-02):**
-- User reported: `TypeError: create_activity_montage() missing 1 required positional argument: 'target_height'`
-- Claude immediately assumed `target_height=180` (matching internal default at line 874)
-- Claude applied the fix WITHOUT asking the user about intent or desired thumbnail size
-- User had actually set BOTH activities and outliers to `target_height=280` for better PDF visibility
-- Claude's assumption was WRONG and showed lack of understanding of user's design goals
-
-**MANDATORY PROTOCOL - When encountering bugs, missing parameters, or requested changes:**
-
-1. **STOP and READ the context**
-   - What is the user trying to accomplish?
-   - Are there existing patterns in the code that reveal intent?
-   - What are the tradeoffs involved?
-
-2. **ASK BEFORE ACTING**
-   - "I see `target_height` is missing. The function has an internal default of 180, but the outlier montage uses 280. Which value should I use for regular activities, and why?"
-   - "Do you want uniform thumbnail sizes across all montages, or different sizes for different purposes?"
-   - "Should this be a configurable parameter instead of hardcoded?"
-
-3. **DISCUSS TRADEOFFS**
-   - Explain what each option means (e.g., "280 = larger thumbnails = better visibility but fewer fit per page")
-   - Present options and let the user choose
-   - Don't assume you know the "correct" answer
-
-4. **PROPOSE, DON'T PRESUME**
-   - "I can set it to 180 (matches internal default) or 280 (matches outliers). Which do you prefer?"
-   - Wait for approval before making changes
-   - If unclear, default to asking rather than guessing
-
-**Examples of GOOD vs BAD responses:**
-
-❌ **BAD (What Claude did):**
-```
-Fixed! Added target_height=180 parameter. You can re-run now.
-```
-
-✅ **GOOD (What Claude should have done):**
-```
-I found the issue - line 1973 is missing the target_height parameter.
-
-I see two different values in the code:
-- Internal default (line 874): 180
-- Outlier montage (line 1986): 280
-
-Question: Should regular activity montages use 180 or 280?
-(280 = larger thumbnails for better visibility, 180 = more compact)
-
-Or should I make this a configurable parameter at the top of main()?
-```
-
-**Key principle: The user has REASONS for their choices. Respect them by asking first.**
-
-### 🚨 CRITICAL: Memory Management at Scale
-
-**NEVER optimize without understanding scale and hardware constraints!**
-
-**The catastrophic mistake (2025-12-31):**
-- Assumed "load-once, reuse" was optimal
-- With 10K images @ 2-4MB each = **20-40GB RAM** (instant laptop crash on 8GB system)
-- User's laptop hit 97% RAM before shutdown
-
-**GOLDEN RULES:**
-1. **ASK ABOUT SCALE FIRST** - 100 images vs 10K images = completely different architecture
-2. **ASK ABOUT HARDWARE** - 8GB vs 32GB RAM changes everything
-3. **RAM >> Speed** - Disk I/O (1-2 sec) is FREE compared to RAM exhaustion (system crash)
-4. **Load-process-delete pattern** - For large datasets (5K+ items), ALWAYS reload data in batches rather than holding in RAM
-5. **Test assumptions** - "Avoid redundant I/O" is WRONG when it causes memory bloat
-
-**Memory optimization checklist for large-scale scripts:**
-- [ ] Load images in batches, delete immediately after processing
-- [ ] Delete matplotlib figures after saving (`plt.close('all')` + `gc.collect()`)
-- [ ] Delete PIL montages after saving to disk
-- [ ] Remove unused data from analysis dicts (e.g., embeddings not needed in PDF)
-- [ ] Free GPU memory after each batch (`torch.cuda.empty_cache()`)
-- [ ] Use `del` + `gc.collect()` aggressively between processing steps
-
-**When in doubt:**
-- Ask user about dataset size
-- Ask user about RAM constraints
-- Propose tradeoffs (speed vs memory) and let USER decide
-
-### When Reviewing/Updating Code
-
-**Always check these files together:**
-1. Read the specific script being modified
-2. Read `README.md` sections for that script
-3. Verify parameter tables, usage examples, and output descriptions match
-
-**Critical consistency points:**
-- **Script names**: Use full filenames exactly (e.g., `postannotation_scripts/1. yolo_model_crop_bbox_per_class.py`)
-- **Parameter defaults**: Must match argparse defaults in scripts
-- **Output file structures**: Directory trees in README must match actual script output
-
-### Code Review Checklist
-- [ ] Read all scripts completely
-- [ ] Read entire README.md
-- [ ] Verify parameter tables match argparse definitions
-- [ ] Confirm output structures match actual `os.makedirs()` and file writes
-- [ ] Check usage examples have correct script names and parameters
-
-### README Update Protocol
-
-**When script parameters change:**
-1. Find the parameter table in README under that script's section
-2. Update the exact row with new default/description
-3. Check if the change affects workflow examples
-
-**When output format changes:**
-1. Update the "Output Structure" code block
-2. Update directory structure sections
-3. Update "Output Files" descriptions
-
-### Change Log Protocol
-
-The `change_log/` directory must stay current:
-- `change_log/changes.md` — completed changes (what was done)
-- `change_log/plans.md` — upcoming work (bucket list)
-
-**When user says "I'm ready to commit" (or similar):**
-1. Ask for a brief description of what was done if not already clear
-2. Update `changes.md`: add a new bullet at the top under "Completed Changes" summarizing the work
-3. Update `plans.md`: if the work completes a planned item, remove or strike it from the list
-4. Stop — the user handles the actual git commit
-
-**Ongoing maintenance:**
-- When user describes new plans or ideas → add to `plans.md`
-- When work on a plan item starts → note "in progress" on that item
-- Never let the log go stale: every "ready to commit" = a `changes.md` update
-
-**Fully done vs partially done — CRITICAL:**
-- **Fully done** → remove item from `plans.md` entirely, add a bullet to `changes.md`
-- **Partially done** → keep in `plans.md` with updated status notes (e.g. `✅ X done, remaining: Y`)
-- **NEVER** leave a `✅ DONE` item sitting in `plans.md` — it belongs in `changes.md`
-- After removing items, renumber the remaining `plans.md` entries
-
----
-
-### Common User Requests
-
-**"Update README after code change"**
-1. Ask which script was changed
-2. Read that script completely
-3. Find corresponding README section
-4. Update only the affected parts
-
-**"Check consistency"**
-1. Read all scripts
-2. Read full README
-3. Report mismatches with file:line references
-4. Focus on functional issues, not stylistic preferences
-
-**"Fix bug/improve script"**
-1. First ask: "Is this for simplicity or production robustness?"
-2. If simplicity: minimal change only
-3. If robustness: verify it doesn't break the simple workflow
-4. Always update README after code changes
-
-### Prohibited Actions
-- Don't add complex logging frameworks
-- Don't add database persistence
-- Don't add web dashboards
-- Don't add multi-threaded/async processing (unless explicitly requested)
-- **NEVER create new documentation files** - Only update README.md and CLAUDE.md
-- Don't create separate guide files (e.g., ACTIVITY_VALIDATION_GUIDE.md) - integrate into existing docs
-
-### Encouraged Actions
-- Fix actual bugs
-- Improve error messages for clarity
-- Add inline comments explaining complex logic
-- Keep README synchronized with code
-- Validate assumptions (like sorted order preservation)
-
-### Response Style
-- Keep answers concise and direct
-- For simple questions: 1-2 sentences max
-- For consistency checks: bullet list of issues
-- For code changes: show exact edits, then update README
-- Don't write lengthy explanations unless asked
+### Prohibited
+- Complex logging frameworks, database persistence, web dashboards, async processing (unless asked)
+- New documentation files — integrate into existing README.md / CLAUDE.md only
+- **Never delete output/results dirs** — only intermediate dirs (e.g. `cropped_bbox_dir`). Output dirs (`cluster_dir`, `preann_results/`) are the deliverable.
 
 ## File Paths
 - Main directory: `<project_root>/`

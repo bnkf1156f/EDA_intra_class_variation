@@ -43,6 +43,8 @@ Tuning Guide:
     - Grid layout => grid_cols_activities, grid_cols_blurry
 """
 
+import argparse
+import logging
 from pathlib import Path
 import sys
 import shutil
@@ -841,6 +843,56 @@ def create_coverage_heatmap(activity_labels, lighting_labels, output_path):
 ## ---------------------------------- MAIN PIPELINE -----------------------------------------
 import os
 
+
+def _setup_logger(log_path: str) -> logging.Logger:
+    logger = logging.getLogger("eda_preann")
+    logger.setLevel(logging.DEBUG)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+    ch = logging.StreamHandler(sys.stderr)
+    ch.setLevel(logging.WARNING)
+    ch.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    return logger
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Pre-annotation frame quality assessment pipeline")
+    p.add_argument("--interactive", action="store_true",
+                   help="Run with questionary prompts instead of CLI args")
+    # Required in non-interactive mode
+    p.add_argument("--frames_dir", type=str, default=None)
+    # Model / embedding
+    p.add_argument("--yolo_batch_size", type=int, default=16)
+    p.add_argument("--yolo_conf", type=float, default=0.3)
+    p.add_argument("--batch_size", type=int, default=64)
+    p.add_argument("--anisotropy_threshold", type=float, default=3.6)
+    # Clustering
+    p.add_argument("--n_components", type=int, default=128)
+    p.add_argument("--min_cluster_size", type=int, default=25)
+    p.add_argument("--min_samples", type=int, default=3)
+    # Embedding weights
+    p.add_argument("--scene_weight", type=float, default=0.7)
+    p.add_argument("--pose_weight", type=float, default=0.3)
+    p.add_argument("--cluster_epsilon", type=float, default=0.3)
+    # PDF / report
+    p.add_argument("--cache_blurry_num_samples", type=int, default=24)
+    p.add_argument("--activity_num_samples", type=int, default=20)
+    p.add_argument("--outliers_num_samples", type=int, default=52)
+    p.add_argument("--pdf_image_quality", type=int, default=70)
+    p.add_argument("--grid_cols_activities", type=int, default=4)
+    p.add_argument("--grid_cols_blurry", type=int, default=4)
+    p.add_argument("--pdf_name", type=str, default=None)
+    p.add_argument("--use_embedding_cache", action=argparse.BooleanOptionalAction, default=True)
+    args = p.parse_args()
+    if not args.interactive and args.frames_dir is None:
+        p.error("Non-interactive mode requires: --frames_dir")
+    return args
+
+
 def ask_or_exit(prompt_result):
     """Exit cleanly if user cancels a questionary prompt (Ctrl+C)."""
     if prompt_result is None:
@@ -884,78 +936,120 @@ def _prompt_text(message, default=None):
 
 
 def main():
+    os.chdir(Path(__file__).resolve().parent.parent)
+
+    args = parse_args()
+
     print("="*60)
     print("PRE-ANNOTATION PIPELINE — DINOv2 + PaCMAP + PCA")
     print("="*60)
 
-    ## -----------------------------------------------##
-    ##   REQUIRED INPUTS (prompted, no defaults)       ##
-    ## -----------------------------------------------##
-    print("\n📁  STEP 0: CONFIGURE PIPELINE INPUTS")
-    print("="*60)
-
-    frames_dir = _prompt_path("Path to frames folder:", must_exist_dir=True)
-
-    ## -----------------------------------------------##
-    ##   RESULTS DIRECTORY (fixed, not changeable)      ##
-    ## -----------------------------------------------##
     RESULTS_DIR = "preann_results"
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
 
-    ## -----------------------------------------------##
-    ##   OPTIONAL PARAMETERS                           ##
-    ## -----------------------------------------------##
+    if args.interactive:
+        ## -----------------------------------------------##
+        ##   REQUIRED INPUTS (prompted, no defaults)       ##
+        ## -----------------------------------------------##
+        print("\n📁  STEP 0: CONFIGURE PIPELINE INPUTS")
+        print("="*60)
 
-    change_defaults = _ask(questionary.confirm(
-        "Change default parameters?", default=False))
+        frames_dir = _prompt_path("Path to frames folder:", must_exist_dir=True)
 
-    if change_defaults:
-        yolo_batch_size      = int(_prompt_text("YOLO pose detection batch size", 16))
-        yolo_conf_person_thr = float(_prompt_text("YOLO pose detection confidence threshold", 0.3))
-        batch_size           = int(_prompt_text("DINOv2 embedding batch size", 64))
-        anisotropy_threshold = float(_prompt_text("Motion blur anisotropy threshold (lower=stricter)", 3.6))
+        print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
+
+        ## -----------------------------------------------##
+        ##   OPTIONAL PARAMETERS                           ##
+        ## -----------------------------------------------##
+
+        change_defaults = _ask(questionary.confirm(
+            "Change default parameters?", default=False))
+
+        if change_defaults:
+            yolo_batch_size      = int(_prompt_text("YOLO pose detection batch size", 16))
+            yolo_conf_person_thr = float(_prompt_text("YOLO pose detection confidence threshold", 0.3))
+            batch_size           = int(_prompt_text("DINOv2 embedding batch size", 64))
+            anisotropy_threshold = float(_prompt_text("Motion blur anisotropy threshold (lower=stricter)", 3.6))
+        else:
+            yolo_batch_size      = 16
+            yolo_conf_person_thr = 0.3
+            batch_size           = 64
+            anisotropy_threshold = 3.6
+
+        # Clustering — always ask (these affect results the most)
+        n_components      = int(_prompt_text("PCA output dimensions for clustering (128=balanced, 256=finer detail)", 128))
+        min_cluster_size  = int(_prompt_text("HDBSCAN min cluster size (smallest group of frames that counts as an activity)", 25))
+        min_samples       = int(_prompt_text("HDBSCAN min_samples (how strict a frame must match its neighbors to join a cluster; lower=more frames included, higher=only dense core frames)", 3))
+
+        # Derive default PDF name from frames folder name
+        _frames_folder_name = Path(frames_dir).name
+        _default_pdf_name   = f"PreAnnotation_Quality_Report_{_frames_folder_name}.pdf"
+
+        if change_defaults:
+            scene_weight                 = float(_prompt_text("Scene embedding weight (0.7=scene-dominant, lower=more pose influence)", 0.7))
+            pose_weight                  = float(_prompt_text("Pose features weight (0.3=more action influence, lower=less pose)", 0.3))
+            cluster_selection_epsilon    = float(_prompt_text("Cluster merge epsilon (0.0=off, 0.3=absorb nearby outliers, higher=more merging)", 0.3))
+            cache_blurry_num_samples     = int(_prompt_text("Blurry samples shown in PDF", 24))
+            activity_num_samples         = int(_prompt_text("Samples shown per activity in PDF", 20))
+            outliers_num_samples         = int(_prompt_text("Samples shown for outliers in PDF", 52))
+            pdf_image_quality            = int(_prompt_text("PDF image JPEG quality (1-100)", 70))
+            grid_cols_activities         = int(_prompt_text("Grid columns for activity montages in PDF", 4))
+            grid_cols_blurry             = int(_prompt_text("Grid columns for blurry montage in PDF", 4))
+            pdf_name                     = _prompt_text("Output PDF filename", _default_pdf_name)
+        else:
+            scene_weight                 = 0.7
+            pose_weight                  = 0.3
+            cluster_selection_epsilon    = 0.3
+            cache_blurry_num_samples     = 24
+            activity_num_samples         = 20
+            outliers_num_samples         = 52
+            pdf_image_quality            = 70
+            grid_cols_activities         = 4
+            grid_cols_blurry             = 4
+            pdf_name                     = _default_pdf_name
+
+        use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
+
     else:
-        yolo_batch_size      = 16
-        yolo_conf_person_thr = 0.3
-        batch_size           = 64
-        anisotropy_threshold = 3.6
+        ## -----------------------------------------------##
+        ##   NON-INTERACTIVE: resolve all values from args ##
+        ## -----------------------------------------------##
+        frames_dir           = args.frames_dir
+        yolo_batch_size      = args.yolo_batch_size
+        yolo_conf_person_thr = args.yolo_conf
+        batch_size           = args.batch_size
+        anisotropy_threshold = args.anisotropy_threshold
+        n_components         = args.n_components
+        min_cluster_size     = args.min_cluster_size
+        min_samples          = args.min_samples
+        scene_weight         = args.scene_weight
+        pose_weight          = args.pose_weight
+        cluster_selection_epsilon = args.cluster_epsilon
+        cache_blurry_num_samples  = args.cache_blurry_num_samples
+        activity_num_samples      = args.activity_num_samples
+        outliers_num_samples      = args.outliers_num_samples
+        pdf_image_quality         = args.pdf_image_quality
+        grid_cols_activities      = args.grid_cols_activities
+        grid_cols_blurry          = args.grid_cols_blurry
+        use_embedding_cache       = False  # headless always recomputes — no stale cache
 
-    # Clustering — always ask (these affect results the most)
-    n_components      = int(_prompt_text("PCA output dimensions for clustering (128=balanced, 256=finer detail)", 128))
-    min_cluster_size  = int(_prompt_text("HDBSCAN min cluster size (smallest group of frames that counts as an activity)", 25))
-    min_samples       = int(_prompt_text("HDBSCAN min_samples (how strict a frame must match its neighbors to join a cluster; lower=more frames included, higher=only dense core frames)", 3))
+        _frames_folder_name = Path(frames_dir).name
+        pdf_name = args.pdf_name if args.pdf_name else f"PreAnnotation_Quality_Report_{_frames_folder_name}.pdf"
 
-    # Derive default PDF name from frames folder name
-    _frames_folder_name = Path(frames_dir).name
-    _default_pdf_name   = f"PreAnnotation_Quality_Report_{_frames_folder_name}.pdf"
+        # Non-interactive: delete cache files so stale embeddings are never reused
+        for _cache in ["temp_multiview_emb.npy", "temp_multiview_emb_indices.npy"]:
+            _p = os.path.join(RESULTS_DIR, _cache)
+            if os.path.isfile(_p):
+                os.remove(_p)
 
-    if change_defaults:
-        scene_weight                 = float(_prompt_text("Scene embedding weight (0.7=scene-dominant, lower=more pose influence)", 0.7))
-        pose_weight                  = float(_prompt_text("Pose features weight (0.3=more action influence, lower=less pose)", 0.3))
-        cluster_selection_epsilon    = float(_prompt_text("Cluster merge epsilon (0.0=off, 0.3=absorb nearby outliers, higher=more merging)", 0.3))
-        cache_blurry_num_samples     = int(_prompt_text("Blurry samples shown in PDF", 24))
-        activity_num_samples         = int(_prompt_text("Samples shown per activity in PDF", 20))
-        outliers_num_samples         = int(_prompt_text("Samples shown for outliers in PDF", 52))
-        pdf_image_quality            = int(_prompt_text("PDF image JPEG quality (1-100)", 70))
-        grid_cols_activities         = int(_prompt_text("Grid columns for activity montages in PDF", 4))
-        grid_cols_blurry             = int(_prompt_text("Grid columns for blurry montage in PDF", 4))
-        pdf_name                     = _prompt_text("Output PDF filename", _default_pdf_name)
-    else:
-        scene_weight                 = 0.7
-        pose_weight                  = 0.3
-        cluster_selection_epsilon    = 0.3
-        cache_blurry_num_samples     = 24
-        activity_num_samples         = 20
-        outliers_num_samples         = 52
-        pdf_image_quality            = 70
-        grid_cols_activities         = 4
-        grid_cols_blurry             = 4
-        pdf_name                     = _default_pdf_name
+        print(f"\n📂  All results will be saved under: {os.path.abspath(RESULTS_DIR)}/")
 
     output_dir = RESULTS_DIR
 
-    use_embedding_cache = _ask(questionary.confirm("Use embedding cache?", default=True))
+    logger = _setup_logger(os.path.join(RESULTS_DIR, "preann_run.log"))
+    logger.info("Pipeline started")
+    logger.info(f"frames_dir={frames_dir}  batch_size={batch_size}  n_components={n_components}")
+    logger.info(f"min_cluster_size={min_cluster_size}  min_samples={min_samples}  anisotropy_threshold={anisotropy_threshold}")
 
     # Model Name for Embedding
     model_name = "facebook/dinov2-base"  # [CLS||avg_patches] = 1536d, strong fine-grained separation
@@ -999,6 +1093,7 @@ def main():
     image_paths = scan_frames(frames_root)
 
     if not image_paths:
+        logger.error("No frames found in frames_dir — exiting")
         print("No frames found. Exiting.")
         return
 
@@ -1034,6 +1129,7 @@ def main():
     embeddings, valid_frame_indices = compute_multiview_embeddings(frame_data, processor, model, device, batch_size, cache_dir=cache_dir, scene_weight=scene_weight, pose_weight=pose_weight)
 
     if len(embeddings) == 0:
+        logger.error("No valid embeddings computed — all frames may be corrupted")
         print("No valid multiview embeddings. Exiting.")
         return
 
@@ -1056,6 +1152,7 @@ def main():
 
     # Report corrupted images
     if len(quality_metrics['corrupted_images']) > 0:
+        logger.warning(f"{len(quality_metrics['corrupted_images'])} corrupted/unreadable images skipped: {quality_metrics['corrupted_images'][:10]}")
         print(f"\n⚠️  Warning: {len(quality_metrics['corrupted_images'])} corrupted/unreadable images skipped")
         print(f"   These images will be excluded from quality metrics analysis")
 
@@ -1126,6 +1223,7 @@ def main():
     if len(quality_metrics['anisotropy']) == 0:
         # No valid frames for quality metrics
         quality_score = 0
+        logger.error("No valid quality metrics — all images corrupted or failed to load")
         print("  ⚠️  No valid quality metrics - all images corrupted or failed to load")
     else:
         median_brightness = np.median(quality_metrics['brightness'])
@@ -1281,14 +1379,16 @@ def main():
     pdf_path = output_dir / pdf_name
     generate_pdf_report(analysis_data, pdf_path, temp_dir, image_quality=pdf_image_quality)
 
+    logger.info(f"Pipeline complete — PDF at {pdf_path}")
+
     print("\n" + "="*60)
     print("ANALYSIS COMPLETE")
     print("="*60)
     print(f"Output: {pdf_path}")
     print("="*60)
 
-    # STEP 12: OPTIONAL — Save all outlier frames to a folder
-    if noise_paths:
+    # STEP 12: OPTIONAL — Save all outlier frames to a folder (interactive only)
+    if args.interactive and noise_paths:
         print("\n" + "="*60)
         print("STEP 12: OUTLIER FRAMES (OPTIONAL SAVE)")
         print("="*60)

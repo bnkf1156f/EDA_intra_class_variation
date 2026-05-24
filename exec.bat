@@ -21,12 +21,12 @@ if "%choice%"=="1" (
     echo.
     echo   Launching Pre-Annotation pipeline (DINOv2^)...
     echo.
-    python "master_scripts/master_script_dinov2_PreAnn.py"
+    python "master_scripts/master_script_dinov2_PreAnn.py" --interactive
 ) else if "%choice%"=="2" (
     echo.
     echo   Launching Post-Annotation and Pre-Training pipeline...
     echo.
-    python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py"
+    python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py" --interactive
 ) else if "%choice%"=="0" (
     echo.
     echo   Bye!

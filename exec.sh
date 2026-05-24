@@ -20,12 +20,12 @@ case "$choice" in
     1)
         echo "  Launching Pre-Annotation pipeline..."
         echo ""
-        python "master_scripts/master_script_dinov2_PreAnn.py"
+        python "master_scripts/master_script_dinov2_PreAnn.py" --interactive
         ;;
     2)
         echo "  Launching Post-Annotation and Pre-Training pipeline..."
         echo ""
-        python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py"
+        python "master_scripts/master_script_dinov2_PostAnn_PreTrain.py" --interactive
         ;;
     0)
         echo "  Bye!"
