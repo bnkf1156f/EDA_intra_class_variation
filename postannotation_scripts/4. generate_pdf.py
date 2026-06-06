@@ -661,10 +661,9 @@ def build_pdf(temp_txt_file, clustering_dir, pdf_name, pdf_quality,
     else:
         print("   ⚠️  No cluster statistics found")
 
-    temp_dir = Path("temp_pdf_charts")
-    temp_dir.mkdir(exist_ok=True)
-
     pdf_filename = f"{pdf_name}.pdf" if not pdf_name.endswith('.pdf') else pdf_name
+    temp_dir = Path(clustering_dir).resolve() / "temp_pdf_charts"
+    temp_dir.mkdir(exist_ok=True)
     print(f"\n📄 Creating PDF: {pdf_filename}")
 
     doc = SimpleDocTemplate(pdf_filename, pagesize=letter,
